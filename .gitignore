@@ -1,0 +1,39 @@
+## Visual Studio 临时文件
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+## 编译产物
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Bb]uild/
+bld/
+[Bb]in/
+[Oo]bj/
+
+## NuGet
+*.nupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+
+## Windows 系统文件
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+## macOS 系统文件
+.DS_Store
+.AppleDouble
+.LSOverride
+
+## 编辑器临时文件
+*.swp
+*.swo
+*~
+*.tmp
+*.bak
