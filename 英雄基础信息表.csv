@@ -1,0 +1,7 @@
+hero_id,hero_name,rarity,role,obtain_method,active_skill_name,active_skill_desc,skill_base_damage,skill_base_duration,skill_base_cd,passive_name,passive_desc,passive_base_value,star2_passive_name,star2_passive_desc,star4_passive_name,star4_passive_desc,star6_passive_name,star6_passive_desc,best_build,best_perk_combo,notes
+hero_iron_guardian,铁壁骑士,R,Defense,第2关赠送,无敌护盾,基地无敌{0}秒,0,3.0,60,坚韧意志,基地生命+{0},2,护盾反击,无敌期间接触基地敌人受{0}伤害,铁壁之心,基地<30%HP自动1s护盾(每局{0}次),不屈意志,基地生命+{0}→+{1},Control,D08+D01+D09,新手保护伞
+hero_elven_archer,精灵射手,R,Attack,第5关赠送,万箭齐发,全屏箭雨{0}秒(每0.5s{1}次伤害),120,5.0,60,鹰眼,全塔射程+{0}%,10,精准射击,万箭齐发对精英/Boss伤害+{0}%,猎手直觉,每波前{0}秒全塔暴击率+{1}%,鹰眼精通,射程+{0}%→+{1}%,DPS,A05+A02+A07,通用型DPS
+hero_frost_witch,霜雪女巫,SR,Control,抽卡,暴风雪,全屏冰冻{0}秒(完全定身),0,3.0,60,寒冰之力,冰塔效果+{0}%,15,冰封余韵,暴风雪后额外减速{0}%持续{1}秒,霜之共鸣,每冰塔暴风雪+{0}秒(最多+{1}秒),绝对零度亲和,冰塔效果+{0}%→+{1}%,Control/Element,D07+D04+S03,冰系Build核心
+hero_pyromancer,炎魔法师,SR,Attack,抽卡,陨石术,指定区域({0}格)大量AOE+灼烧{1}秒,800,6.0,60,火焰亲和,火系词条效果+{0}%,20,灼热余烬,陨石灼烧区域持续{0}秒,连锁点燃,灼烧敌人被击杀爆炸({0}%伤害),火焰大师,火系词条+{0}%→+{1}%,Element/DPS,A06+S04+S13,元素反应流核心
+hero_dwarf_miner,矮人矿工,SR,Economy,抽卡,淘金热,{0}秒内击杀金币×{1},10,10.0,60,矿脉感知,金矿产出+{0}%,20,宝藏嗅觉,每{0}波额外获得{1}金币,金矿扩建,金矿上限+{0}(3→{1}),矿脉精通,金矿产出+{0}%→+{1}%,Economy,E04+E06+E09,经济碾压流核心
+hero_chosen_one,天选者,SSR,Support,抽卡(50保底),神之裁决,全屏敌人受当前HP{0}%伤害,20,0,60,命运垂青,词条选择{0}选1→{1}选1,3,4,命运指引,词条界面显示推荐标签,双重审判,神之裁决后{0}秒全塔暴击+{1}%,天命所归,{0}选1→{1}选1,Universal,S11+S12,任意路线均加速
