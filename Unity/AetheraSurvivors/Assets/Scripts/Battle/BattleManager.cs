@@ -100,6 +100,18 @@ namespace AetheraSurvivors.Battle
         /// <summary>当前波次数据</summary>
         private LevelWaveData _currentWaveData;
 
+        /// <summary>当前章节</summary>
+        private int _currentChapter = 1;
+
+        /// <summary>当前关卡</summary>
+        private int _currentLevel = 1;
+
+        /// <summary>本局击杀数</summary>
+        private int _killCount = 0;
+
+        /// <summary>本局建塔数</summary>
+        private int _towerBuiltCount = 0;
+
         // ========== 公共属性 ==========
 
         /// <summary>当前战斗状态</summary>
@@ -121,6 +133,8 @@ namespace AetheraSurvivors.Battle
             EventBus.Instance.Subscribe<BaseDestroyedEvent>(OnBaseDestroyed);
             EventBus.Instance.Subscribe<AllWavesClearedEvent>(OnAllWavesCleared);
             EventBus.Instance.Subscribe<WaveCompleteEvent>(OnWaveComplete);
+            EventBus.Instance.Subscribe<EnemyDeathEvent>(OnEnemyKilled);
+            EventBus.Instance.Subscribe<TowerUpgradedEvent>(OnTowerBuilt);
 
             Logger.I("BattleManager", "战斗管理器初始化");
         }
@@ -130,6 +144,8 @@ namespace AetheraSurvivors.Battle
             EventBus.Instance.Unsubscribe<BaseDestroyedEvent>(OnBaseDestroyed);
             EventBus.Instance.Unsubscribe<AllWavesClearedEvent>(OnAllWavesCleared);
             EventBus.Instance.Unsubscribe<WaveCompleteEvent>(OnWaveComplete);
+            EventBus.Instance.Unsubscribe<EnemyDeathEvent>(OnEnemyKilled);
+            EventBus.Instance.Unsubscribe<TowerUpgradedEvent>(OnTowerBuilt);
         }
 
         private void Update()
@@ -152,10 +168,64 @@ namespace AetheraSurvivors.Battle
         {
             _currentLevelId = levelId;
             _battleTimer = 0f;
+            _killCount = 0;
+            _towerBuiltCount = 0;
+
+            // 从PlayerData或GameManager.Pending读取当前章节/关卡
+            _currentChapter = Framework.GameManager.PendingChapter;
+            _currentLevel = Framework.GameManager.PendingLevel;
+
+            if (AetheraSurvivors.Data.PlayerDataManager.HasInstance && _currentChapter <= 0)
+            {
+                var data = AetheraSurvivors.Data.PlayerDataManager.Instance.Data;
+                _currentChapter = data.UnlockedChapter;
+                _currentLevel = data.UnlockedLevel;
+            }
+
+            // 尝试从JSON配置加载关卡数据
+            if (mapData == null || waveData == null)
+            {
+                var levelConfig = LoadLevelConfig(_currentChapter, _currentLevel);
+                if (levelConfig != null)
+                {
+                    if (mapData == null) mapData = levelConfig.ToMapData();
+                    if (waveData == null) waveData = levelConfig.ToWaveData();
+                    _currentLevelId = levelConfig.levelId;
+                    Logger.I("BattleManager", "从JSON配置加载关卡: {0}", _currentLevelId);
+                }
+            }
 
             ChangeState(BattleState.Loading);
             StartCoroutine(LoadBattleCoroutine(mapData, waveData));
         }
+
+        /// <summary>
+        /// 从 Resources/Configs/Levels/level_config.json 加载关卡配置
+        /// </summary>
+        private Data.LevelConfig LoadLevelConfig(int chapter, int level)
+        {
+            // 先检查缓存
+            if (_cachedLevelTable == null)
+            {
+                var textAsset = Resources.Load<TextAsset>("Configs/Levels/level_config");
+                if (textAsset != null)
+                {
+                    _cachedLevelTable = JsonUtility.FromJson<Data.LevelConfigTable>(textAsset.text);
+                    Logger.I("BattleManager", "关卡配置表加载成功: {0}个关卡",
+                        _cachedLevelTable?.levels?.Count ?? 0);
+                }
+                else
+                {
+                    Logger.W("BattleManager", "关卡配置表不存在: Configs/Levels/level_config，使用测试数据");
+                    return null;
+                }
+            }
+
+            return _cachedLevelTable?.Find(chapter, level);
+        }
+
+        /// <summary>关卡配置表缓存</summary>
+        private static Data.LevelConfigTable _cachedLevelTable;
 
         /// <summary>
         /// 玩家点击"开始波次"
@@ -298,6 +368,12 @@ namespace AetheraSurvivors.Battle
             // 9. 重置金矿计数
             GoldMine.ResetCount();
 
+            // 10. 播放战斗BGM
+            if (AudioManager.HasInstance)
+            {
+                AudioManager.Instance.PlayBGM("Audio/BGM/bgm_battle", 1.0f);
+            }
+
             Logger.I("BattleManager", "✅ 关卡加载完成，进入准备阶段");
 
             // 进入准备阶段
@@ -346,11 +422,29 @@ namespace AetheraSurvivors.Battle
             }
         }
 
+        /// <summary>怪物被击杀 → 统计击杀数</summary>
+        private void OnEnemyKilled(EnemyDeathEvent evt)
+        {
+            _killCount++;
+        }
+
+        /// <summary>塔被建造/升级 → 统计建塔数</summary>
+        private void OnTowerBuilt(TowerUpgradedEvent evt)
+        {
+            if (evt.NewLevel == 1) _towerBuiltCount++;
+        }
+
         // ========== 战斗结束 ==========
 
         private void OnBattleEnd(bool isVictory)
         {
             Time.timeScale = 1f;
+
+            // 停止战斗BGM
+            if (AudioManager.HasInstance)
+            {
+                AudioManager.Instance.StopBGM(0.5f);
+            }
 
             int wavesCleared = WaveManager.HasInstance ? WaveManager.Instance.CurrentWaveNumber : 0;
             int totalWaves = WaveManager.HasInstance ? WaveManager.Instance.TotalWaves : 0;
@@ -365,6 +459,34 @@ namespace AetheraSurvivors.Battle
                 Duration = _battleTimer,
                 BaseHPRemaining = BaseHealth.HasInstance ? BaseHealth.Instance.CurrentHP : 0
             });
+
+            // 调用元游戏系统处理战斗结算（解锁下一关、发放奖励等）
+            if (MetaGame.MetaGameInitializer.HasInstance)
+            {
+                int stars = 0;
+                if (isVictory)
+                {
+                    // 根据基地剩余血量计算星级
+                    float hpPercent = BaseHealth.HasInstance ? BaseHealth.Instance.HPPercent : 0f;
+                    if (hpPercent >= 0.8f) stars = 3;
+                    else if (hpPercent >= 0.4f) stars = 2;
+                    else stars = 1;
+                }
+
+                MetaGame.MetaGameInitializer.Instance.ProcessBattleResult(new MetaGame.BattleResultData
+                {
+                    Chapter = _currentChapter,
+                    Level = _currentLevel,
+                    IsVictory = isVictory,
+                    Stars = stars,
+                    ClearTime = _battleTimer,
+                    KillCount = _killCount,
+                    TowerBuiltCount = _towerBuiltCount,
+                    HighestDPS = 0f,
+                    Difficulty = 0,
+                    HeroId = ""
+                });
+            }
 
             Logger.I("BattleManager", "战斗结束: {0}, 波次{1}/{2}, 用时{3:F1}秒",
                 isVictory ? "✅胜利" : "❌失败", wavesCleared, totalWaves, _battleTimer);

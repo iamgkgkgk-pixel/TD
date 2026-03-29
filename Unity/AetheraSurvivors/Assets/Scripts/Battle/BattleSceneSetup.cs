@@ -49,6 +49,9 @@ namespace AetheraSurvivors.Battle
             if (_mainCamera == null)
                 _mainCamera = Camera.main;
 
+            // 0.5 加载战斗背景图
+            SetupBattleBackground();
+
             // 1. 预加载所有MonoSingleton（确保它们的GameObject在场景中创建）
             PreloadSingletons();
 
@@ -66,6 +69,172 @@ namespace AetheraSurvivors.Battle
             {
                 Invoke(nameof(StartTestBattle), 0.2f); // 延迟一帧确保所有系统就绪
             }
+        }
+
+        /// <summary>
+        /// 战斗背景 — 深色主题底色（与章节匹配）
+        /// </summary>
+        private void SetupBattleBackground()
+        {
+            if (_mainCamera == null) return;
+
+            // 相机背景色：深绿（与草原章节融合）
+            _mainCamera.backgroundColor = new Color(0.06f, 0.12f, 0.06f, 1f);
+
+            Logger.I("BattleSetup", "战斗背景：深绿底色，地图加载后添加面板框");
+        }
+
+        /// <summary>
+        /// 创建地图面板框 + 外围主题色填充
+        /// 参考手游效果：圆角白框包裹游戏区域，外围用主题色装饰
+        /// </summary>
+        private void CreateMapEdgeVignette()
+        {
+            if (!Map.GridSystem.HasInstance || !Map.GridSystem.Instance.IsMapLoaded) return;
+
+            var grid = Map.GridSystem.Instance;
+            var bounds = grid.GetMapBounds();
+            float mapW = bounds.size.x;
+            float mapH = bounds.size.y;
+            Vector3 mapCenter = bounds.center;
+
+            var frameRoot = new GameObject("[MapFrame]");
+            frameRoot.transform.SetParent(transform); // 作为BattleSceneSetup子对象，退出战斗时自动销毁
+            frameRoot.transform.position = new Vector3(mapCenter.x, mapCenter.y, -0.3f);
+
+            // ======== 1. 地图面板框（圆角矩形描边） ========
+            // 生成圆角矩形纹理用于9-slice
+            int texW = 128, texH = 128;
+            int cornerR = 16;
+            int borderW = 3;
+
+            var frameTex = new Texture2D(texW, texH, TextureFormat.RGBA32, false);
+            Color borderColor = new Color(1f, 1f, 1f, 0.55f); // 半透明白描边
+            Color innerColor = Color.clear; // 内部透明
+            Color outerColor = Color.clear; // 外部透明
+
+            for (int py = 0; py < texH; py++)
+            {
+                for (int px = 0; px < texW; px++)
+                {
+                    // 计算到圆角矩形边缘的距离
+                    float dx = Mathf.Max(0, Mathf.Max(cornerR - px, px - (texW - 1 - cornerR)));
+                    float dy = Mathf.Max(0, Mathf.Max(cornerR - py, py - (texH - 1 - cornerR)));
+                    float dist = Mathf.Sqrt(dx * dx + dy * dy);
+
+                    if (dist > cornerR + 1)
+                        frameTex.SetPixel(px, py, outerColor); // 圆角外
+                    else if (dist > cornerR - borderW)
+                    {
+                        // 描边区域（带抗锯齿）
+                        float aa = Mathf.Clamp01(cornerR + 1 - dist);
+                        frameTex.SetPixel(px, py, new Color(borderColor.r, borderColor.g, borderColor.b, borderColor.a * aa));
+                    }
+                    else
+                        frameTex.SetPixel(px, py, innerColor); // 内部透明
+                }
+            }
+            frameTex.Apply();
+            frameTex.filterMode = FilterMode.Bilinear;
+
+            // 9-slice 边距
+            float slicePad = cornerR + 2;
+            var frameSprite = Sprite.Create(frameTex, new Rect(0, 0, texW, texH),
+                new Vector2(0.5f, 0.5f), texW / (mapW + 0.6f), 0, SpriteMeshType.FullRect,
+                new Vector4(slicePad, slicePad, slicePad, slicePad));
+
+            var frameObj = new GameObject("MapFrameBorder");
+            frameObj.transform.SetParent(frameRoot.transform, false);
+            frameObj.transform.localPosition = Vector3.zero;
+            var frameSR = frameObj.AddComponent<SpriteRenderer>();
+            frameSR.sprite = frameSprite;
+            frameSR.drawMode = SpriteDrawMode.Sliced;
+            frameSR.size = new Vector2(mapW + 0.6f, mapH + 0.6f);
+            frameSR.sortingOrder = 8;
+            frameSR.color = Color.white;
+
+            // ======== 2. 内侧微暗边（给地图一点立体感/内凹阴影） ========
+            var innerShadowTex = new Texture2D(texW, texH, TextureFormat.RGBA32, false);
+            int shadowWidth = 8;
+            for (int py = 0; py < texH; py++)
+            {
+                for (int px = 0; px < texW; px++)
+                {
+                    // 同样的圆角矩形，但渲染内侧渐变阴影
+                    float dx2 = Mathf.Max(0, Mathf.Max(cornerR - px, px - (texW - 1 - cornerR)));
+                    float dy2 = Mathf.Max(0, Mathf.Max(cornerR - py, py - (texH - 1 - cornerR)));
+                    float dist2 = Mathf.Sqrt(dx2 * dx2 + dy2 * dy2);
+
+                    // 边缘内侧的渐变
+                    float edgeDist = cornerR - dist2; // 距离圆角边缘的内侧距离
+                    if (edgeDist < 0)
+                        innerShadowTex.SetPixel(px, py, Color.clear);
+                    else if (edgeDist < shadowWidth)
+                    {
+                        float t = edgeDist / shadowWidth;
+                        float a = (1f - t) * 0.25f; // 边缘暗，中心透明
+                        innerShadowTex.SetPixel(px, py, new Color(0, 0, 0, a));
+                    }
+                    else
+                        innerShadowTex.SetPixel(px, py, Color.clear);
+                }
+            }
+            innerShadowTex.Apply();
+            innerShadowTex.filterMode = FilterMode.Bilinear;
+
+            var innerShadowSprite = Sprite.Create(innerShadowTex, new Rect(0, 0, texW, texH),
+                new Vector2(0.5f, 0.5f), texW / (mapW + 0.3f), 0, SpriteMeshType.FullRect,
+                new Vector4(slicePad, slicePad, slicePad, slicePad));
+
+            var shadowObj = new GameObject("MapInnerShadow");
+            shadowObj.transform.SetParent(frameRoot.transform, false);
+            shadowObj.transform.localPosition = new Vector3(0, 0, 0.01f);
+            var shadowSR = shadowObj.AddComponent<SpriteRenderer>();
+            shadowSR.sprite = innerShadowSprite;
+            shadowSR.drawMode = SpriteDrawMode.Sliced;
+            shadowSR.size = new Vector2(mapW + 0.3f, mapH + 0.3f);
+            shadowSR.sortingOrder = 7;
+
+            // ======== 3. 外围深色遮罩（上下左右四条大色块，遮住地图外的空白） ========
+            float camH = _mainCamera != null ? _mainCamera.orthographicSize * 2f : 20f;
+            float camW = _mainCamera != null ? camH * _mainCamera.aspect : 30f;
+            float fillSize = Mathf.Max(camW, camH) * 2f; // 足够大的遮罩
+
+            Color bgFill = new Color(0.06f, 0.12f, 0.06f, 1f); // 与相机背景色一致
+
+            // 上
+            CreateFillRect(frameRoot.transform, "FillTop", bgFill,
+                new Vector3(0, mapH * 0.5f + fillSize * 0.5f + 0.3f, 0.02f),
+                new Vector3(fillSize, fillSize, 1));
+            // 下
+            CreateFillRect(frameRoot.transform, "FillBottom", bgFill,
+                new Vector3(0, -mapH * 0.5f - fillSize * 0.5f - 0.3f, 0.02f),
+                new Vector3(fillSize, fillSize, 1));
+            // 左
+            CreateFillRect(frameRoot.transform, "FillLeft", bgFill,
+                new Vector3(-mapW * 0.5f - fillSize * 0.5f - 0.3f, 0, 0.02f),
+                new Vector3(fillSize, fillSize, 1));
+            // 右
+            CreateFillRect(frameRoot.transform, "FillRight", bgFill,
+                new Vector3(mapW * 0.5f + fillSize * 0.5f + 0.3f, 0, 0.02f),
+                new Vector3(fillSize, fillSize, 1));
+
+            Logger.I("BattleSetup", "地图面板框已创建: {0:F1}x{1:F1}", mapW, mapH);
+        }
+
+        private void CreateFillRect(Transform parent, string name, Color color,
+            Vector3 localPos, Vector3 scale)
+        {
+            var obj = new GameObject(name);
+            obj.transform.SetParent(parent, false);
+            obj.transform.localPosition = localPos;
+            obj.transform.localScale = scale;
+            var sr = obj.AddComponent<SpriteRenderer>();
+            var tex = new Texture2D(1, 1);
+            tex.SetPixel(0, 0, color);
+            tex.Apply();
+            sr.sprite = Sprite.Create(tex, new Rect(0, 0, 1, 1), new Vector2(0.5f, 0.5f), 1f);
+            sr.sortingOrder = 6; // 在面板框之下
         }
 
         /// <summary>
@@ -230,6 +399,7 @@ namespace AetheraSurvivors.Battle
             {
                 BattleCamera.Instance.FitToMap();
                 Logger.I("BattleSetup", "摄像机适配已委托给BattleCamera");
+                CreateMapEdgeVignette();
                 return;
             }
 
@@ -260,6 +430,8 @@ namespace AetheraSurvivors.Battle
 
             Logger.I("BattleSetup", "摄像机已适配地图(兜底): 中心=({0:F1},{1:F1}) 正交大小={2:F1}",
                 camPos.x, camPos.y, _mainCamera.orthographicSize);
+
+            CreateMapEdgeVignette();
         }
 
     }

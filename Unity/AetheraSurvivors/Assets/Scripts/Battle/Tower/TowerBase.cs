@@ -12,6 +12,9 @@ using System.Collections.Generic;
 using UnityEngine;
 using AetheraSurvivors.Framework;
 using AetheraSurvivors.Battle.Map;
+using AetheraSurvivors.Battle.Enemy;
+using AetheraSurvivors.Battle.Performance;
+using AetheraSurvivors.Battle.Rune;
 using Logger = AetheraSurvivors.Framework.Logger;
 
 namespace AetheraSurvivors.Battle.Tower
@@ -220,11 +223,41 @@ namespace AetheraSurvivors.Battle.Tower
             }
         }
 
-        /// <summary>当前攻击力</summary>
-        public float Damage => CurrentLevelData.damage;
+        /// <summary>当前攻击力（含词条加成）</summary>
+        public float Damage
+        {
+            get
+            {
+                float baseDmg = CurrentLevelData.damage;
+                if (RuneSystem.HasInstance)
+                {
+                    baseDmg *= (1f + RuneSystem.Instance.DamageBonus);
+                    // 物理/魔法专精加成
+                    if (_config != null)
+                    {
+                        if (_config.damageType == DamageType.Physical)
+                            baseDmg *= (1f + RuneSystem.Instance.PhysicalDamageBonus);
+                        else if (_config.damageType == DamageType.Magical)
+                            baseDmg *= (1f + RuneSystem.Instance.MagicalDamageBonus);
+                    }
+                }
+                return baseDmg;
+            }
+        }
 
-        /// <summary>当前攻击间隔</summary>
-        public float AttackInterval => CurrentLevelData.attackInterval;
+        /// <summary>当前攻击间隔（含词条加成）</summary>
+        public float AttackInterval
+        {
+            get
+            {
+                float baseInterval = CurrentLevelData.attackInterval;
+                if (RuneSystem.HasInstance && RuneSystem.Instance.AttackSpeedBonus > 0f)
+                {
+                    baseInterval /= (1f + RuneSystem.Instance.AttackSpeedBonus);
+                }
+                return Mathf.Max(baseInterval, 0.1f); // 最小攻击间隔0.1秒
+            }
+        }
 
         /// <summary>当前射程</summary>
         public float Range => CurrentLevelData.range;
@@ -467,24 +500,47 @@ namespace AetheraSurvivors.Battle.Tower
             }
         }
 
-        /// <summary>获取射程内的所有怪物</summary>
+        /// <summary>获取射程内的所有怪物（优先使用空间分区，性能安全）</summary>
         protected virtual List<Transform> GetEnemiesInRange()
         {
             var results = new List<Transform>();
-            float rangeSqr = Range * Range;
 
-            // 查找所有带Enemy标签的对象
-            // 后续阶段接入EnemyManager后会用空间分区优化
-            var enemies = GameObject.FindGameObjectsWithTag("Enemy");
-            for (int i = 0; i < enemies.Length; i++)
+            // 计算词条加成后的实际射程
+            float effectiveRange = Range;
+            if (RuneSystem.HasInstance && RuneSystem.Instance.RangeBonus > 0f)
             {
-                var enemy = enemies[i];
-                if (enemy == null || !enemy.activeInHierarchy) continue;
+                effectiveRange *= (1f + RuneSystem.Instance.RangeBonus);
+            }
+            float rangeSqr = effectiveRange * effectiveRange;
 
-                float distSqr = (enemy.transform.position - transform.position).sqrMagnitude;
-                if (distSqr <= rangeSqr)
+            // 优先使用空间分区系统（O(K) vs O(N)）
+            if (SpatialPartition.HasInstance)
+            {
+                var enemies = SpatialPartition.Instance.QueryRadius(transform.position, effectiveRange);
+                for (int i = 0; i < enemies.Count; i++)
                 {
-                    results.Add(enemy.transform);
+                    if (enemies[i] != null && !enemies[i].IsDead)
+                    {
+                        results.Add(enemies[i].transform);
+                    }
+                }
+                return results;
+            }
+
+            // 回退：使用EnemySpawner的活跃列表（避免FindGameObjectsWithTag）
+            if (EnemySpawner.HasInstance)
+            {
+                var activeEnemies = EnemySpawner.Instance.ActiveEnemies;
+                for (int i = 0; i < activeEnemies.Count; i++)
+                {
+                    var enemy = activeEnemies[i];
+                    if (enemy == null || !enemy.gameObject.activeInHierarchy) continue;
+
+                    float distSqr = (enemy.transform.position - transform.position).sqrMagnitude;
+                    if (distSqr <= rangeSqr)
+                    {
+                        results.Add(enemy.transform);
+                    }
                 }
             }
 
@@ -601,14 +657,23 @@ namespace AetheraSurvivors.Battle.Tower
             return last ?? (enemies.Count > 0 ? enemies[0] : null);
         }
 
-        /// <summary>检查目标是否仍然有效</summary>
+        /// <summary>检查目标是否仍然有效（含词条射程加成）</summary>
         protected bool IsTargetValid(Transform target)
         {
             if (target == null || !target.gameObject.activeInHierarchy) return false;
 
-            // 检查是否仍在射程内
+            // 检查目标是否已死亡
+            var enemyComp = target.GetComponent<Enemy.EnemyBase>();
+            if (enemyComp != null && enemyComp.IsDead) return false;
+
+            // 检查是否仍在射程内（与GetEnemiesInRange使用相同的effectiveRange）
+            float effectiveRange = Range;
+            if (RuneSystem.HasInstance && RuneSystem.Instance.RangeBonus > 0f)
+            {
+                effectiveRange *= (1f + RuneSystem.Instance.RangeBonus);
+            }
             float distSqr = (target.position - transform.position).sqrMagnitude;
-            return distSqr <= Range * Range;
+            return distSqr <= effectiveRange * effectiveRange;
         }
 
         // ========== 旋转瞄准 ==========

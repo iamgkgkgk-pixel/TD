@@ -2,7 +2,8 @@
     "name": "AetheraSurvivors",
     "rootNamespace": "",
     "references": [
-        "GUID:5efd170ecd8084500bed5692932fe14e"
+        "GUID:5efd170ecd8084500bed5692932fe14e",
+        "GUID:6055be8ebefd69e48b49212b09b47b2f"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

@@ -97,61 +97,61 @@ namespace AetheraSurvivors.Framework
             // ====== 按顺序初始化各管理器 ======
 
             // 1. EventBus（纯C#单例，手动初始化）
-            EventBus.Instance.Initialize();
+            try { EventBus.Instance.Initialize(); } catch (System.Exception e) { Debug.LogError($"[GameManager] EventBus初始化失败: {e.Message}"); }
             Debug.Log("[GameManager] ✅ 1/9 EventBus 初始化完成");
 
             // 2. TimerManager（MonoSingleton，访问Instance自动创建）
-            TimerManager.Preload();
+            try { TimerManager.Preload(); } catch (System.Exception e) { Debug.LogError($"[GameManager] TimerManager初始化失败: {e.Message}"); }
             Debug.Log("[GameManager] ✅ 2/9 TimerManager 初始化完成");
 
             // 3. ObjectPoolManager
-            ObjectPoolManager.Preload();
+            try { ObjectPoolManager.Preload(); } catch (System.Exception e) { Debug.LogError($"[GameManager] ObjectPoolManager初始化失败: {e.Message}"); }
             Debug.Log("[GameManager] ✅ 3/9 ObjectPoolManager 初始化完成");
 
             // 4. ResourceManager
-            ResourceManager.Preload();
+            try { ResourceManager.Preload(); } catch (System.Exception e) { Debug.LogError($"[GameManager] ResourceManager初始化失败: {e.Message}"); }
             Debug.Log("[GameManager] ✅ 4/9 ResourceManager 初始化完成");
 
             // 5. SaveManager（纯C#单例）
-            SaveManager.Instance.Initialize();
+            try { SaveManager.Instance.Initialize(); } catch (System.Exception e) { Debug.LogError($"[GameManager] SaveManager初始化失败: {e.Message}"); }
             Debug.Log("[GameManager] ✅ 5/9 SaveManager 初始化完成");
 
             // 6. AudioManager
-            AudioManager.Preload();
+            try { AudioManager.Preload(); } catch (System.Exception e) { Debug.LogError($"[GameManager] AudioManager初始化失败: {e.Message}"); }
             Debug.Log("[GameManager] ✅ 6/9 AudioManager 初始化完成");
 
             // 7. UIManager
-            UIManager.Preload();
+            try { UIManager.Preload(); } catch (System.Exception e) { Debug.LogError($"[GameManager] UIManager初始化失败: {e.Message}"); }
             Debug.Log("[GameManager] ✅ 7/9 UIManager 初始化完成");
 
             // 8. SceneController
-            SceneController.Preload();
+            try { SceneController.Preload(); } catch (System.Exception e) { Debug.LogError($"[GameManager] SceneController初始化失败: {e.Message}"); }
             Debug.Log("[GameManager] ✅ 8/14 SceneController 初始化完成");
 
             // ====== 平台层初始化（#62-#66） ======
 
             // 9. CrashReporter — 最先初始化，尽早捕获异常
-            CrashReporter.Preload();
+            try { CrashReporter.Preload(); } catch (System.Exception e) { Debug.LogError($"[GameManager] CrashReporter初始化失败: {e.Message}"); }
             Debug.Log("[GameManager] ✅ 9/14 CrashReporter 初始化完成");
 
             // 10. HttpClient — 网络基础层
-            HttpClient.Preload();
+            try { HttpClient.Preload(); } catch (System.Exception e) { Debug.LogError($"[GameManager] HttpClient初始化失败: {e.Message}"); }
             Debug.Log("[GameManager] ✅ 10/14 HttpClient 初始化完成");
 
             // 11. WXBridgeExtended — 微信SDK桥接层
-            WXBridgeExtended.Preload();
+            try { WXBridgeExtended.Preload(); } catch (System.Exception e) { Debug.LogError($"[GameManager] WXBridgeExtended初始化失败: {e.Message}"); }
             Debug.Log("[GameManager] ✅ 11/14 WXBridgeExtended 初始化完成");
 
             // 12. AnalyticsManager — 数据埋点
-            AnalyticsManager.Instance.Initialize();
+            try { AnalyticsManager.Instance.Initialize(); } catch (System.Exception e) { Debug.LogError($"[GameManager] AnalyticsManager初始化失败: {e.Message}"); }
             Debug.Log("[GameManager] ✅ 12/14 AnalyticsManager 初始化完成");
 
             // 13. TimeSync — 服务器时间同步
-            TimeSync.Instance.Initialize();
+            try { TimeSync.Instance.Initialize(); } catch (System.Exception e) { Debug.LogError($"[GameManager] TimeSync初始化失败: {e.Message}"); }
             Debug.Log("[GameManager] ✅ 13/14 TimeSync 初始化完成");
 
             // 14. WXLogin — 微信登录（仅初始化，不自动登录）
-            WXLogin.Instance.Initialize();
+            try { WXLogin.Instance.Initialize(); } catch (System.Exception e) { Debug.LogError($"[GameManager] WXLogin初始化失败: {e.Message}"); }
             Debug.Log("[GameManager] ✅ 14/14 WXLogin 初始化完成");
 
             // 预加载微信系统字体（异步，不阻塞）
@@ -270,12 +270,20 @@ namespace AetheraSurvivors.Framework
             Debug.Log("[GameManager] 游戏已恢复");
         }
 
+        /// <summary>待进入的章节号（EnterBattle前设置）</summary>
+        public static int PendingChapter = 1;
+        /// <summary>待进入的关卡号（EnterBattle前设置）</summary>
+        public static int PendingLevel = 1;
+
         /// <summary>
         /// 进入战斗 — 关闭大厅UI，创建BattleSceneSetup启动完整战斗流程
         /// </summary>
-        public void EnterBattle()
+        public void EnterBattle(int chapter = 0, int level = 0)
         {
-            Debug.Log("[GameManager] 从大厅进入战斗...");
+            if (chapter > 0) PendingChapter = chapter;
+            if (level > 0) PendingLevel = level;
+
+            Debug.Log($"[GameManager] 从大厅进入战斗: 第{PendingChapter}章 关卡{PendingLevel}");
 
             ChangeState(GameState.InBattle);
 

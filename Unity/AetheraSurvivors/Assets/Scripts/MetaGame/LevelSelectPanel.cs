@@ -83,6 +83,9 @@ namespace AetheraSurvivors.MetaGame
         protected override void OnShow()
         {
             RefreshChapter(_currentChapter);
+            // 播放关卡选择BGM
+            if (Framework.AudioManager.HasInstance)
+                Framework.AudioManager.Instance.PlayBGM("Audio/BGM/bgm_level_select", 0.8f);
         }
 
         protected override void OnClose()
@@ -410,25 +413,21 @@ _txtDetailStamina.text = $"!消耗: {staminaCost}";
         {
             Debug.Log($"[LevelSelect] 开始战斗: 第{_currentChapter}章 关卡{_selectedLevel} 难度:{_currentDifficulty}");
 
-            // 检查体力
+            // 体力检查（测试模式：不扣体力）
             if (PlayerDataManager.HasInstance)
             {
-                int cost = 6 + (_currentChapter - 1);
                 var data = PlayerDataManager.Instance.Data;
-                if (data.Stamina < cost)
-                {
-                    Debug.LogWarning("[LevelSelect] 体力不足！");
-                    return;
-                }
+                if (data.Stamina < 100) data.Stamina = 99999; // 自动补满
+                Debug.Log($"[LevelSelect] 测试模式：体力无限，当前={data.Stamina}");
             }
 
             // 关闭弹窗，进入战斗
             _detailPopup.SetActive(false);
 
-            // 通过GameManager进入战斗
+            // 通过GameManager进入战斗（传递章节和关卡号）
             if (GameManager.HasInstance)
             {
-                GameManager.Instance.EnterBattle();
+                GameManager.Instance.EnterBattle(_currentChapter, _selectedLevel);
             }
         }
 

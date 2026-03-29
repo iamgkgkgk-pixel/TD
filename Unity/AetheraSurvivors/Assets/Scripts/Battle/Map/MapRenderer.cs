@@ -1,12 +1,11 @@
 // ============================================================
 // 文件名：MapRenderer.cs
 // 功能描述：地图渲染 — 混合渲染系统
-//   底层：Shader Blend Quad（草地↔路径自然过渡）
-//   上层：Tilemap（障碍物/塔位/出生点/基地等非地面元素）
+//   底层：Shader Blend Quad（草地/路径/岩石/花朵 四纹理自然过渡）
 //   高亮层：Tilemap（塔位高亮/无效放置提示）
 // 创建时间：2026-03-25
 // 所属模块：Battle/Map
-// 对应交互：阶段三 #119 + 方案C Shader Blend
+// 对应交互：阶段三 #119 + 方案C Shader Blend（扩展为4纹理）
 // ============================================================
 
 
@@ -167,6 +166,12 @@ namespace AetheraSurvivors.Battle.Map
             Logger.I("MapRenderer", "地图渲染完成: {0}×{1} ({2}), Blend格子={3}, Tilemap格子={4}",
                 grid.Width, grid.Height, blendStatus, blendedCount, tilemapCount);
 
+            // ===== 装饰物随机放置 =====
+            PlaceDecorations(grid);
+
+            // ===== 塔位可视化标记（让玩家一眼看出哪里可以放塔）=====
+            PlaceTowerSlotMarkers(grid);
+
         }
 
 
@@ -253,13 +258,16 @@ namespace AetheraSurvivors.Battle.Map
             if (_groundTilemap != null) _groundTilemap.ClearAllTiles();
             if (_decorationTilemap != null) _decorationTilemap.ClearAllTiles();
             if (_highlightTilemap != null) _highlightTilemap.ClearAllTiles();
+            if (_decoRoot != null) { Destroy(_decoRoot); _decoRoot = null; }
+            if (_towerSlotMarkersRoot != null) { Destroy(_towerSlotMarkersRoot); _towerSlotMarkersRoot = null; }
             CleanupBlendRendering();
         }
 
         // ========== Blend渲染方法 ==========
 
         /// <summary>
-        /// 判断格子类型是否由Blend渲染处理（地面类型）
+        /// 判断格子类型是否由Blend渲染处理
+        /// 扩展为所有地形类型都走Blend（草地/路径/岩石/花朵四纹理混合）
         /// </summary>
         private bool IsBlendedType(GridCellType type)
         {
@@ -267,12 +275,13 @@ namespace AetheraSurvivors.Battle.Map
                 || type == GridCellType.Path
                 || type == GridCellType.SpawnPoint
                 || type == GridCellType.BasePoint
+                || type == GridCellType.Obstacle
                 || type == GridCellType.TowerSlot;
         }
 
         /// <summary>
-        /// 初始化Blend渲染系统
-        /// 创建Blend Quad + 材质 + 生成BlendMask
+        /// 初始化Blend渲染系统（4纹理：草地/路径/岩石/花朵）
+        /// 创建Blend Quad + 材质 + 生成BlendMask(RGBA)
         /// </summary>
         private void SetupBlendRendering(GridSystem grid)
         {
@@ -283,15 +292,18 @@ namespace AetheraSurvivors.Battle.Map
             // 先清理旧的Blend资源
             CleanupBlendRendering();
 
-            // 加载草地和路径纹理
-            Logger.I("MapRenderer", "--- 加载草地纹理 ---");
+            // 加载四种地形纹理
+            Logger.I("MapRenderer", "--- 加载地形纹理 ---");
             Sprite grassSprite = SpriteLoader.LoadMapTile("grass");
-            Logger.I("MapRenderer", "--- 加载路径纹理 ---");
             Sprite pathSprite = SpriteLoader.LoadMapTile("path");
+            Sprite rockSprite = SpriteLoader.LoadMapTile("rock");
+            Sprite flowersSprite = SpriteLoader.LoadMapTile("flowers");
 
-            Logger.I("MapRenderer", "grassSprite={0}, pathSprite={1}",
+            Logger.I("MapRenderer", "grassSprite={0}, pathSprite={1}, rockSprite={2}, flowersSprite={3}",
                 grassSprite != null ? grassSprite.name : "NULL",
-                pathSprite != null ? pathSprite.name : "NULL");
+                pathSprite != null ? pathSprite.name : "NULL",
+                rockSprite != null ? rockSprite.name : "NULL",
+                flowersSprite != null ? flowersSprite.name : "NULL");
 
             if (grassSprite == null || pathSprite == null)
             {
@@ -301,10 +313,7 @@ namespace AetheraSurvivors.Battle.Map
                 return;
             }
 
-
-            // ===== 关键：强制设置纹理为Repeat模式 =====
-            // Sprite类型纹理在Unity中默认被强制为Clamp，但Shader平铺采样需要Repeat
-            // 必须在运行时手动覆盖，否则会出现明显的网格接缝
+            // 强制设置纹理为Repeat模式（Shader平铺采样需要）
             Texture2D grassTex = grassSprite.texture;
             Texture2D pathTex = pathSprite.texture;
 
@@ -315,15 +324,23 @@ namespace AetheraSurvivors.Battle.Map
             pathTex.filterMode = FilterMode.Trilinear;
             pathTex.anisoLevel = 4;
 
+            // rock和flowers纹理（可选，缺失时用草地替代）
+            Texture2D rockTex = rockSprite != null ? rockSprite.texture : grassTex;
+            Texture2D flowersTex = flowersSprite != null ? flowersSprite.texture : grassTex;
 
-            Logger.I("MapRenderer", "草地纹理详情: {0}×{1}, format={2}, isReadable={3}, wrapMode={4}, filterMode={5}",
-                grassTex.width, grassTex.height, grassTex.format, grassTex.isReadable, grassTex.wrapMode, grassTex.filterMode);
-            Logger.I("MapRenderer", "路径纹理详情: {0}×{1}, format={2}, isReadable={3}, wrapMode={4}, filterMode={5}",
-                pathTex.width, pathTex.height, pathTex.format, pathTex.isReadable, pathTex.wrapMode, pathTex.filterMode);
+            rockTex.wrapMode = TextureWrapMode.Repeat;
+            rockTex.filterMode = FilterMode.Trilinear;
+            rockTex.anisoLevel = 4;
+            flowersTex.wrapMode = TextureWrapMode.Repeat;
+            flowersTex.filterMode = FilterMode.Trilinear;
+            flowersTex.anisoLevel = 4;
 
+            Logger.I("MapRenderer", "草地纹理: {0}×{1}", grassTex.width, grassTex.height);
+            Logger.I("MapRenderer", "路径纹理: {0}×{1}", pathTex.width, pathTex.height);
+            Logger.I("MapRenderer", "岩石纹理: {0}×{1}", rockTex.width, rockTex.height);
+            Logger.I("MapRenderer", "花朵纹理: {0}×{1}", flowersTex.width, flowersTex.height);
 
-            // 加载Shader（先尝试Resources.Load确保WebGL不被strip，再回退Shader.Find）
-
+            // 加载Shader
             Shader blendShader = Resources.Load<Shader>("Shaders/MapBlendShader");
             if (blendShader == null)
             {
@@ -336,8 +353,7 @@ namespace AetheraSurvivors.Battle.Map
                 return;
             }
 
-
-            // 生成BlendMask纹理
+            // 生成BlendMask纹理（RGBA四通道）
             _blendMaskTexture = MapBlendMaskGenerator.GenerateBlendMask();
             if (_blendMaskTexture == null)
             {
@@ -346,29 +362,25 @@ namespace AetheraSurvivors.Battle.Map
                 return;
             }
 
-            // 创建材质
+            // 创建材质并设置四张纹理
             _blendMaterial = new Material(blendShader);
             _blendMaterial.SetTexture("_GrassTex", grassTex);
             _blendMaterial.SetTexture("_PathTex", pathTex);
-
+            _blendMaterial.SetTexture("_RockTex", rockTex);
+            _blendMaterial.SetTexture("_FlowersTex", flowersTex);
             _blendMaterial.SetTexture("_BlendMask", _blendMaskTexture);
-            // _tileScale控制纹理在地图上的重复次数
-            // 值越大纹理重复越多（细节越密），值越小纹理越拉伸
-            // 默认使用配置值，如果<=1则自动根据地图尺寸计算合理值
-            // 使用Stochastic Tiling后，每3-4格重复一次纹理效果最佳
+
+            // TileScale计算
             float effectiveTileScale = _tileScale;
             if (_tileScale <= 1.0f)
             {
-                // 自动计算：让纹理每4格重复一次（Stochastic Tiling下效果最佳）
                 effectiveTileScale = Mathf.Max(grid.Width, grid.Height) / 4.0f;
-
                 Logger.D("MapRenderer", "自动计算TileScale: {0} (地图{1}×{2})", 
                     effectiveTileScale, grid.Width, grid.Height);
             }
 
             _blendMaterial.SetFloat("_TileScale", effectiveTileScale);
             _blendMaterial.SetFloat("_BlendSoftness", _blendSoftness);
-
             _blendMaterial.SetFloat("_NoiseStrength", _noiseStrength);
             _blendMaterial.SetFloat("_NoiseScale", 10f);
 
@@ -376,8 +388,8 @@ namespace AetheraSurvivors.Battle.Map
             _blendQuadObj = CreateBlendQuad(grid);
 
             _blendRenderingActive = true;
-            Logger.I("MapRenderer", "✅ Blend渲染启动成功: Shader={0}, TileScale={1}, BlendSoftness={2}, NoiseStrength={3}",
-                blendShader.name, effectiveTileScale, _blendSoftness, _noiseStrength);
+            Logger.I("MapRenderer", "✅ Blend渲染(4纹理)启动成功: TileScale={0}, BlendSoftness={1}, NoiseStrength={2}",
+                effectiveTileScale, _blendSoftness, _noiseStrength);
             Logger.I("MapRenderer", "BlendQuad位置={0}, 缩放={1}",
                 _blendQuadObj.transform.position, _blendQuadObj.transform.localScale);
             Logger.I("MapRenderer", "========== SetupBlendRendering诊断结束 ==========");
@@ -455,6 +467,233 @@ namespace AetheraSurvivors.Battle.Map
 
             mesh.RecalculateBounds();
             return mesh;
+        }
+
+        // ========== 塔位标记系统 ==========
+
+        /// <summary>塔位标记根节点</summary>
+        private GameObject _towerSlotMarkersRoot;
+
+        /// <summary>
+        /// 在每个空闲塔位上放置可视化标记（半透明绿色方框+角标）
+        /// 让玩家一眼看出哪里可以放塔
+        /// </summary>
+        private void PlaceTowerSlotMarkers(GridSystem grid)
+        {
+            // 清理旧标记
+            if (_towerSlotMarkersRoot != null) Destroy(_towerSlotMarkersRoot);
+            _towerSlotMarkersRoot = new GameObject("TowerSlotMarkers");
+            _towerSlotMarkersRoot.transform.SetParent(transform);
+
+            // 生成塔位标记纹理（64x64，半透明方框+内部微弱填充）
+            int texSize = 64;
+            int border = 3;
+            var markerTex = new Texture2D(texSize, texSize, TextureFormat.RGBA32, false);
+            Color borderColor = new Color(0.3f, 0.9f, 0.3f, 0.6f); // 绿色边框
+            Color fillColor = new Color(0.3f, 0.8f, 0.3f, 0.12f);  // 极淡绿色填充
+            Color cornerColor = new Color(1f, 0.9f, 0.3f, 0.7f);   // 金色角标
+
+            for (int py = 0; py < texSize; py++)
+            {
+                for (int px = 0; px < texSize; px++)
+                {
+                    bool isBorder = px < border || px >= texSize - border ||
+                                    py < border || py >= texSize - border;
+                    // 四个角加强（8x8金色方块）
+                    bool isCorner = (px < 8 || px >= texSize - 8) && (py < 8 || py >= texSize - 8);
+
+                    if (isCorner)
+                        markerTex.SetPixel(px, py, cornerColor);
+                    else if (isBorder)
+                        markerTex.SetPixel(px, py, borderColor);
+                    else
+                        markerTex.SetPixel(px, py, fillColor);
+                }
+            }
+            markerTex.Apply();
+            markerTex.filterMode = FilterMode.Bilinear;
+
+            Sprite markerSprite = Sprite.Create(markerTex,
+                new Rect(0, 0, texSize, texSize), new Vector2(0.5f, 0.5f), texSize);
+
+            int markerCount = 0;
+            for (int y = 0; y < grid.Height; y++)
+            {
+                for (int x = 0; x < grid.Width; x++)
+                {
+                    var cell = grid.GetCell(x, y);
+                    if (cell.Type != GridCellType.TowerSlot) continue;
+
+                    Vector3 worldPos = grid.GridToWorld(new Vector2Int(x, y));
+                    worldPos.z = -0.05f; // 在地面之上，装饰物之下
+
+                    var markerObj = new GameObject($"SlotMarker_{x}_{y}");
+                    markerObj.transform.SetParent(_towerSlotMarkersRoot.transform);
+                    markerObj.transform.position = worldPos;
+                    markerObj.transform.localScale = new Vector3(
+                        grid.CellSize * 0.92f, grid.CellSize * 0.92f, 1f);
+
+                    var sr = markerObj.AddComponent<SpriteRenderer>();
+                    sr.sprite = markerSprite;
+                    sr.sortingOrder = 2; // 在ground(0)和deco(1)之上，highlight(5)之下
+                    sr.color = Color.white;
+
+                    markerCount++;
+                }
+            }
+
+            Logger.I("MapRenderer", "塔位标记放置完成: {0}个", markerCount);
+        }
+
+        // ========== 装饰物系统 ==========
+
+        /// <summary>装饰物定义：名称+权重+缩放范围</summary>
+        private struct DecoInfo
+        {
+            public string Name;
+            public float Weight;        // 权重（越大越常见）
+            public float ScaleMin;      // 最小缩放
+            public float ScaleMax;      // 最大缩放
+
+            public DecoInfo(string name, float weight, float scaleMin, float scaleMax)
+            {
+                Name = name; Weight = weight; ScaleMin = scaleMin; ScaleMax = scaleMax;
+            }
+        }
+
+        private static readonly DecoInfo[] _decoInfos = {
+            new DecoInfo("rock_small",    4f,  0.30f, 0.45f),  // 小石头：最常见
+            new DecoInfo("flowers_wild",  3f,  0.32f, 0.48f),  // 野花：常见
+            new DecoInfo("bush",          3f,  0.38f, 0.55f),  // 灌木：常见，稍大
+            new DecoInfo("rock_large",    2f,  0.40f, 0.55f),  // 大石头：较少
+            new DecoInfo("tree_green",    1.5f, 0.50f, 0.70f), // 绿树：稀有，较大
+            new DecoInfo("tree_autumn",   0.8f, 0.50f, 0.70f), // 秋树：稀有
+        };
+
+        /// <summary>装饰物GameObject根节点</summary>
+        private GameObject _decoRoot;
+
+        /// <summary>
+        /// 在空地格子上随机放置装饰物（用SpriteRenderer，支持缩放/偏移/旋转）
+        /// </summary>
+        private void PlaceDecorations(GridSystem grid)
+        {
+            // 清理旧装饰物
+            if (_decoRoot != null) Destroy(_decoRoot);
+            _decoRoot = new GameObject("DecorationSprites");
+            _decoRoot.transform.SetParent(transform);
+
+            // 加载所有可用装饰物
+            List<DecoInfo> available = new List<DecoInfo>();
+            List<Sprite> sprites = new List<Sprite>();
+            float totalWeight = 0f;
+
+            foreach (var info in _decoInfos)
+            {
+                Sprite spr = SpriteLoader.LoadMapDecoration(info.Name);
+                if (spr != null)
+                {
+                    available.Add(info);
+                    sprites.Add(spr);
+                    totalWeight += info.Weight;
+                }
+            }
+
+            if (available.Count == 0)
+            {
+                Logger.D("MapRenderer", "无装饰物资源可用，跳过");
+                return;
+            }
+
+            int seed = grid.Width * 1000 + grid.Height;
+            var rng = new System.Random(seed);
+            int placedCount = 0;
+
+            for (int y = 0; y < grid.Height; y++)
+            {
+                for (int x = 0; x < grid.Width; x++)
+                {
+                    var cell = grid.GetCell(x, y);
+                    if (cell.Type != GridCellType.Empty) continue;
+
+                    // 边缘密度高（40%），中心密度低（8%）
+                    // 距离边缘越近概率越高，形成自然过渡带
+                    int edgeDist = Mathf.Min(x, y, grid.Width - 1 - x, grid.Height - 1 - y);
+                    float decoChance;
+                    if (edgeDist == 0)
+                        decoChance = 0.50f;  // 最外围50%
+                    else if (edgeDist == 1)
+                        decoChance = 0.30f;  // 次外围30%
+                    else if (edgeDist == 2)
+                        decoChance = 0.15f;  // 第三层15%
+                    else
+                        decoChance = 0.06f;  // 内部6%
+
+                    if (rng.NextDouble() > decoChance) continue;
+
+                    // 加权随机选择装饰物类型
+                    // 边缘优先选大型装饰物（树/灌木），中心优先小型（石头/花）
+                    float roll = (float)(rng.NextDouble() * totalWeight);
+                    int chosenIdx = 0;
+                    float cumulative = 0f;
+                    for (int i = 0; i < available.Count; i++)
+                    {
+                        float w = available[i].Weight;
+                        // 边缘2格内：大型装饰物权重×3（树/灌木遮挡硬边）
+                        if (edgeDist <= 1 && (available[i].Name.StartsWith("tree") || available[i].Name == "bush"))
+                            w *= 3f;
+                        cumulative += w;
+                        if (roll <= cumulative) { chosenIdx = i; break; }
+                    }
+
+                    DecoInfo chosen = available[chosenIdx];
+                    Sprite spr = sprites[chosenIdx];
+
+                    // 边缘装饰物更大（额外缩放1.3倍）
+                    float edgeBonus = edgeDist <= 1 ? 1.3f : 1.0f;
+
+                    // 随机缩放（边缘有额外加成）
+                    float scale = (chosen.ScaleMin + (float)rng.NextDouble() * (chosen.ScaleMax - chosen.ScaleMin)) * edgeBonus;
+
+                    // 随机偏移（在格子内±0.3范围偏移，避免死对齐格子中心）
+                    float offsetX = (float)(rng.NextDouble() - 0.5) * 0.6f;
+                    float offsetY = (float)(rng.NextDouble() - 0.5) * 0.6f;
+
+                    // 随机水平翻转（50%概率）
+                    bool flipX = rng.NextDouble() > 0.5;
+
+                    // 随机轻微旋转（±8度，石头/灌木可以转，树不转）
+                    float rotation = 0f;
+                    if (chosen.Name.StartsWith("rock") || chosen.Name == "bush" || chosen.Name == "flowers_wild")
+                        rotation = (float)(rng.NextDouble() - 0.5) * 16f;
+
+                    // 创建 SpriteRenderer GameObject
+                    Vector3 worldPos = grid.GridToWorld(new Vector2Int(x, y));
+                    // GridToWorld已返回格子中心，只加随机偏移
+                    worldPos.x += offsetX * grid.CellSize;
+                    worldPos.y += offsetY * grid.CellSize;
+                    worldPos.z = -0.01f; // 略微在地面前方
+
+                    var decoObj = new GameObject($"Deco_{chosen.Name}_{placedCount}");
+                    decoObj.transform.SetParent(_decoRoot.transform);
+                    decoObj.transform.position = worldPos;
+                    decoObj.transform.localScale = new Vector3(
+                        flipX ? -scale : scale, scale, 1f);
+                    decoObj.transform.rotation = Quaternion.Euler(0, 0, rotation);
+
+                    var sr = decoObj.AddComponent<SpriteRenderer>();
+                    sr.sprite = spr;
+                    sr.sortingOrder = 1; // 在地面之上
+                    // 边缘装饰物不透明（做遮挡），中心装饰物半透明（融入地面）
+                    float alpha = edgeDist <= 1 ? 0.95f : (0.65f + (float)rng.NextDouble() * 0.2f);
+                    sr.color = new Color(1f, 1f, 1f, alpha);
+
+                    placedCount++;
+                }
+            }
+
+            Logger.I("MapRenderer", "装饰物放置完成: {0}个（{1}种可用，边缘密度梯度模式）",
+                placedCount, available.Count);
         }
 
         /// <summary>

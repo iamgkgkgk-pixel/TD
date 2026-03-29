@@ -164,6 +164,19 @@ namespace AetheraSurvivors.MetaGame
             Debug.Log("[MetaGameInitializer] 初始化体力系统...");
             StaminaSystem.Instance.Initialize();
 
+            // 测试模式：确保体力无限
+            if (Data.PlayerDataManager.HasInstance)
+            {
+                var data = Data.PlayerDataManager.Instance.Data;
+                if (data.Stamina < 1000)
+                {
+                    data.Stamina = 99999;
+                    data.MaxStamina = 99999;
+                    Data.PlayerDataManager.Instance.MarkDirty();
+                    Debug.Log("[MetaGameInitializer] 测试模式：体力已设为无限");
+                }
+            }
+
             // 第三层：社交和通知系统
             Debug.Log("[MetaGameInitializer] 初始化社交系统...");
             SocialSystem.Instance.Initialize();
@@ -374,16 +387,25 @@ namespace AetheraSurvivors.MetaGame
         {
             if (!PlayerDataManager.HasInstance) return;
 
-            // 基础金币 = 关卡基础 + 击杀奖励
+            if (!result.IsVictory)
+            {
+                // 败局只给少量击杀金币（30%），不给基础金币和星级奖励
+                int failGold = Mathf.RoundToInt(result.KillCount * 2 * 0.3f);
+                if (failGold > 0) PlayerDataManager.Instance.AddGold(failGold);
+                Debug.Log($"[MetaGameInitializer] 败局金币: 击杀{failGold}");
+                return;
+            }
+
+            // 胜利：基础金币 + 击杀奖励 + 星级奖励
             int baseGold = 100 + result.Chapter * 20 + result.Level * 10;
             int killGold = result.KillCount * 2;
             int starBonus = result.Stars * 50;
-            int totalGold = baseGold + killGold + (result.IsVictory ? starBonus : 0);
+            int totalGold = baseGold + killGold + starBonus;
 
             PlayerDataManager.Instance.AddGold(totalGold);
 
             // 胜利额外奖励钻石
-            if (result.IsVictory && result.Stars >= 3)
+            if (result.Stars >= 3)
             {
                 PlayerDataManager.Instance.AddDiamonds(5);
             }

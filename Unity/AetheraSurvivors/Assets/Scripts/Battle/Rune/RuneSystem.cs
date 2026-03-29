@@ -255,6 +255,9 @@ namespace AetheraSurvivors.Battle.Rune
 
             RecalculateModifiers();
 
+            // 实时应用特殊效果
+            ApplyImmediateEffects(config);
+
             EventBus.Instance.Publish(new RuneSelectedEvent
             {
                 RuneId = runeId,
@@ -264,6 +267,24 @@ namespace AetheraSurvivors.Battle.Rune
             Logger.I("RuneSystem", "选择词条: {0} (x{1})",
                 config.displayName,
                 _selectedRunes[runeId].StackCount);
+        }
+
+        // ========== 即时效果应用 ==========
+
+        /// <summary>应用需要立即生效的词条效果</summary>
+        private void ApplyImmediateEffects(RuneConfig config)
+        {
+            switch (config.effectType)
+            {
+                case RuneEffectType.BaseHPUp:
+                    // 立即增加基地最大血量和当前血量
+                    if (AetheraSurvivors.Battle.BaseHealth.HasInstance)
+                    {
+                        int hpAdd = Mathf.RoundToInt(config.effectValue);
+                        AetheraSurvivors.Battle.BaseHealth.Instance.IncreaseMaxHP(hpAdd);
+                    }
+                    break;
+            }
         }
 
         // ========== 效果计算 ==========

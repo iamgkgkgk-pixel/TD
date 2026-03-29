@@ -251,11 +251,33 @@ namespace AetheraSurvivors.MetaGame
         /// <summary>获取所有奖励配置</summary>
         public List<BattlePassReward> GetAllRewards() => _rewards;
 
-        /// <summary>获取赛季剩余天数</summary>
-        public int GetRemainingDays()
+        private void DeliverReward(string rewardType, int amount, string heroId)
         {
-            // 简化：返回固定值
-            return SeasonDurationDays;
+            if (!PlayerDataManager.HasInstance) return;
+
+            switch (rewardType)
+            {
+                case "gold":
+                    PlayerDataManager.Instance.AddGold(amount);
+                    break;
+                case "diamonds":
+                    PlayerDataManager.Instance.AddDiamonds(amount);
+                    break;
+                case "hero_fragment":
+                    if (!string.IsNullOrEmpty(heroId))
+                        HeroSystem.Instance.AddFragments(heroId, amount);
+                    break;
+                case "stamina":
+                    var sdata = PlayerDataManager.Instance.Data;
+                    sdata.Stamina = Mathf.Min(sdata.Stamina + amount, sdata.MaxStamina * 2);
+                    PlayerDataManager.Instance.MarkDirty();
+                    break;
+                case "summon_ticket":
+                    var tdata = PlayerDataManager.Instance.Data;
+                    tdata.SummonTickets += amount;
+                    PlayerDataManager.Instance.MarkDirty();
+                    break;
+            }
         }
 
         /// <summary>检查免费奖励是否已领取</summary>
@@ -284,7 +306,8 @@ namespace AetheraSurvivors.MetaGame
                     SeasonId = 1, Level = 0, Exp = 0,
                     IsPremium = false,
                     ClaimedFree = new List<int>(),
-                    ClaimedPremium = new List<int>()
+                    ClaimedPremium = new List<int>(),
+                    SeasonStartTimestamp = 0
                 };
             }
             return data.BattlePassData;
@@ -292,31 +315,50 @@ namespace AetheraSurvivors.MetaGame
 
         private void CheckSeasonReset()
         {
-            // TODO: 检查赛季是否过期，过期则重置
+            if (!PlayerDataManager.HasInstance) return;
+            var bpData = EnsureBPData();
+
+            // 计算赛季结束时间
+            if (bpData.SeasonStartTimestamp <= 0)
+            {
+                // 首次初始化赛季起始时间
+                bpData.SeasonStartTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                PlayerDataManager.Instance.MarkDirty();
+                return;
+            }
+
+            long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            long seasonEnd = bpData.SeasonStartTimestamp + SeasonDurationDays * 86400L;
+
+            if (now >= seasonEnd)
+            {
+                // 赛季过期，重置战令
+                Debug.Log("[BattlePass] 赛季过期，重置战令数据");
+                bpData.SeasonId++;
+                bpData.Level = 0;
+                bpData.Exp = 0;
+                bpData.IsPremium = false;
+                bpData.ClaimedFree = new List<int>();
+                bpData.ClaimedPremium = new List<int>();
+                bpData.SeasonStartTimestamp = now;
+                PlayerDataManager.Instance.MarkDirty();
+                PlayerDataManager.Instance.Save();
+            }
         }
 
-        private void DeliverReward(string rewardType, int amount, string heroId)
+        /// <summary>获取赛季剩余天数</summary>
+        public int GetRemainingDays()
         {
-            if (!PlayerDataManager.HasInstance) return;
+            if (!PlayerDataManager.HasInstance) return SeasonDurationDays;
+            var bpData = EnsureBPData();
 
-            switch (rewardType)
-            {
-                case "gold":
-                    PlayerDataManager.Instance.AddGold(amount);
-                    break;
-                case "diamonds":
-                    PlayerDataManager.Instance.AddDiamonds(amount);
-                    break;
-                case "hero_fragment":
-                    if (!string.IsNullOrEmpty(heroId))
-                        HeroSystem.Instance.AddFragments(heroId, amount);
-                    break;
-                case "stamina":
-                    var data = PlayerDataManager.Instance.Data;
-                    data.Stamina = Mathf.Min(data.Stamina + amount, data.MaxStamina * 2);
-                    PlayerDataManager.Instance.MarkDirty();
-                    break;
-            }
+            if (bpData.SeasonStartTimestamp <= 0) return SeasonDurationDays;
+
+            long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            long seasonEnd = bpData.SeasonStartTimestamp + SeasonDurationDays * 86400L;
+            long remainingSeconds = seasonEnd - now;
+
+            return Mathf.Max(0, (int)(remainingSeconds / 86400L));
         }
 
         private void InitRewards()

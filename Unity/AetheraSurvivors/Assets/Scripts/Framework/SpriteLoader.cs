@@ -222,6 +222,16 @@ namespace AetheraSurvivors.Framework
             return LoadOrNull(path);
         }
 
+        /// <summary>
+        /// 加载地图装饰物Sprite
+        /// </summary>
+        /// <param name="name">装饰物名（tree_green/rock_small/bush/flowers_wild等）</param>
+        public static Sprite LoadMapDecoration(string name)
+        {
+            string path = $"Sprites/Maps/deco_{name}";
+            return LoadOrNull(path);
+        }
+
         // ====================================================================
         // UI图标资源加载
         // ====================================================================
@@ -243,6 +253,38 @@ namespace AetheraSurvivors.Framework
         public static Sprite LoadRoguelikeIcon(string name)
         {
             string path = $"Sprites/UI/roguelike_{name}";
+            return LoadOrNull(path);
+        }
+
+        // ====================================================================
+        // 英雄立绘资源加载
+        // ====================================================================
+
+        /// <summary>
+        /// 加载英雄全身立绘
+        /// </summary>
+        /// <param name="spriteName">英雄图片名（如ranger/knight/witch等）</param>
+        public static Sprite LoadHeroFull(string spriteName)
+        {
+            string path = $"Sprites/Heroes/hero_{spriteName}_full";
+            return LoadOrNull(path);
+        }
+
+        /// <summary>
+        /// 加载英雄半身像
+        /// </summary>
+        public static Sprite LoadHeroHalf(string spriteName)
+        {
+            string path = $"Sprites/Heroes/hero_{spriteName}_half";
+            return LoadOrNull(path);
+        }
+
+        /// <summary>
+        /// 加载英雄头像
+        /// </summary>
+        public static Sprite LoadHeroAvatar(string spriteName)
+        {
+            string path = $"Sprites/Heroes/hero_{spriteName}_avatar";
             return LoadOrNull(path);
         }
 
@@ -399,11 +441,18 @@ namespace AetheraSurvivors.Framework
             string[] tiles = { "grass", "path", "rock", "flowers", "water", "castle_wall" };
             foreach (string t in tiles) LoadMapTile(t);
 
+            // 地图装饰物
+            string[] decos = { "tree_green", "tree_autumn", "rock_small", "rock_large", "bush", "flowers_wild" };
+            foreach (string d in decos) LoadMapDecoration(d);
+
             // UI图标
             string[] uiIcons = { "icon_coin", "icon_heart", "icon_wave_flag",
                 "btn_tower_archer", "btn_tower_mage", "btn_tower_ice",
                 "btn_tower_cannon", "btn_tower_poison", "btn_tower_goldmine",
-                "icon_upgrade", "icon_sell", "icon_speedup" };
+                "icon_upgrade", "icon_sell", "icon_speedup",
+                "nav_battle", "nav_hero", "nav_shop", "nav_gacha", "nav_social",
+                "nav_quest", "nav_mail", "nav_battlepass", "nav_rank",
+                "deco_red_dot", "deco_lock", "deco_new_tag" };
             foreach (string u in uiIcons) LoadUI(u);
 
             // 词条图标

@@ -126,10 +126,9 @@ public class TechProtoMain : MonoBehaviour
     }
 
     /// <summary>
-    /// 启动战斗模式 — 隐藏技术验证UI，创建BattleSceneSetup启动战斗
+    /// 启动战斗模式 — 隐藏技术验证UI，初始化数据层后创建BattleSceneSetup启动战斗
     /// </summary>
     private void StartBattleMode()
-
     {
         Debug.Log("[TechProtoMain] 切换到战斗模式！");
 
@@ -144,6 +143,19 @@ public class TechProtoMain : MonoBehaviour
         if (perfMonitor != null) perfMonitor.enabled = false;
         if (touchTest != null) touchTest.enabled = false;
         this.enabled = false; // 停止TechProtoMain的Update
+
+        // 确保数据层初始化（体力检查依赖PlayerDataManager）
+        GameManager.Preload();
+        AetheraSurvivors.Data.PlayerDataManager.Instance.Initialize();
+
+        // 体力检查（测试模式：跳过体力消耗）
+        if (AetheraSurvivors.Data.PlayerDataManager.HasInstance)
+        {
+            var data = AetheraSurvivors.Data.PlayerDataManager.Instance.Data;
+            // 测试模式：确保体力充足
+            if (data.Stamina < 100) data.Stamina = 99999;
+            Debug.Log($"[TechProtoMain] 测试模式：体力={data.Stamina}（无限）");
+        }
 
         // 创建战斗场景入口
         var battleSetup = new GameObject("[BattleSceneSetup]");

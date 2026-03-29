@@ -84,6 +84,12 @@ namespace AetheraSurvivors.MetaGame
         {
             RefreshAll();
             PlayEnterAnimation();
+
+            // 播放主界面BGM
+            if (Framework.AudioManager.HasInstance)
+            {
+                Framework.AudioManager.Instance.PlayBGM("Audio/BGM/bgm_main_menu", 1.0f);
+            }
         }
 
         protected override void OnHide()
@@ -103,14 +109,17 @@ namespace AetheraSurvivors.MetaGame
             if (_rootRect == null)
                 _rootRect = gameObject.AddComponent<RectTransform>();
 
-            // 全屏背景
+            // 全屏背景（使用Live Shader驱动动效）
             BuildBackground();
+
+            // 星辰+萤火叠加层（轻量叠加，不阻挡点击）
+            BuildOverlayEffects();
 
             // 顶部信息栏
             BuildTopBar();
 
-            // 中央英雄展示区
-            BuildHeroDisplay();
+            // 中央英雄展示区（暂时隐藏——英雄立绘资源未就位，影响美观）
+            // BuildHeroDisplay();
 
             // 功能入口按钮组
             BuildFunctionButtons();
@@ -119,7 +128,7 @@ namespace AetheraSurvivors.MetaGame
             BuildBottomNavBar();
         }
 
-        /// <summary>构建背景</summary>
+        /// <summary>构建背景 — 使用BackgroundLive Shader让图片动起来</summary>
         private void BuildBackground()
         {
             var bgObj = new GameObject("BG");
@@ -130,167 +139,511 @@ namespace AetheraSurvivors.MetaGame
             bgRect.offsetMin = Vector2.zero;
             bgRect.offsetMax = Vector2.zero;
 
-            // 深色渐变背景
-            UIStyleKit.CreateGradientPanel(bgRect,
-                new Color(0.04f, 0.04f, 0.10f, 1f),
-                new Color(0.08f, 0.10f, 0.20f, 1f));
+            // 加载背景图
+            var bgSprite = Resources.Load<Sprite>("Sprites/Backgrounds/bg_main_menu");
+            if (bgSprite == null)
+            {
+                var bgTex = Resources.Load<Texture2D>("Sprites/Backgrounds/bg_main_menu");
+                if (bgTex != null)
+                    bgSprite = Sprite.Create(bgTex, new Rect(0, 0, bgTex.width, bgTex.height), new Vector2(0.5f, 0.5f));
+            }
+
+            if (bgSprite != null)
+            {
+                var bgImg = bgObj.AddComponent<Image>();
+                bgImg.sprite = bgSprite;
+                bgImg.type = Image.Type.Simple;
+                bgImg.preserveAspect = false;
+                bgImg.raycastTarget = false;
+
+                // 加载 BackgroundLive Shader 材质
+                var liveShader = Shader.Find("UI/BackgroundLive");
+                if (liveShader != null)
+                {
+                    var liveMat = new Material(liveShader);
+                    liveMat.SetTexture("_MainTex", bgSprite.texture);
+
+                    // 云区参数（画面上半部分 55%~95% 高度的云）
+                    liveMat.SetFloat("_CloudSpeed", 0.015f);
+                    liveMat.SetFloat("_CloudAmplitude", 0.006f);
+                    liveMat.SetFloat("_CloudFrequency", 1.5f);
+                    liveMat.SetFloat("_CloudYStart", 0.50f);
+                    liveMat.SetFloat("_CloudYEnd", 0.92f);
+
+                    // 树区参数（下方35%以下，左右两侧）
+                    liveMat.SetFloat("_TreeSpeed", 1.2f);
+                    liveMat.SetFloat("_TreeAmplitude", 0.003f);
+                    liveMat.SetFloat("_TreeFrequency", 2.5f);
+                    liveMat.SetFloat("_TreeYMax", 0.35f);
+
+                    // 太阳参数（中偏左 40%,55%）
+                    liveMat.SetVector("_SunCenter", new Vector4(0.40f, 0.55f, 0f, 0f));
+                    liveMat.SetFloat("_SunRadius", 0.18f);
+                    liveMat.SetFloat("_SunPulseSpeed", 0.6f);
+                    liveMat.SetFloat("_SunPulseAmplitude", 0.004f);
+                    liveMat.SetFloat("_SunGlowAmplitude", 0.12f);
+
+                    // 全局微呼吸
+                    liveMat.SetFloat("_BreathSpeed", 0.25f);
+                    liveMat.SetFloat("_BreathAmplitude", 0.0008f);
+
+                    bgImg.material = liveMat;
+                    Debug.Log("[MainMenuUI] BackgroundLive Shader 已应用");
+                }
+                else
+                {
+                    Debug.LogWarning("[MainMenuUI] 找不到 UI/BackgroundLive Shader，背景将静态显示");
+                }
+            }
+            else
+            {
+                UIStyleKit.CreateGradientPanel(bgRect,
+                    new Color(0.04f, 0.04f, 0.10f, 1f),
+                    new Color(0.08f, 0.10f, 0.20f, 1f));
+            }
         }
 
-        /// <summary>构建顶部信息栏</summary>
+        /// <summary>星辰+萤火叠加层（保留轻量粒子效果）</summary>
+        private void BuildOverlayEffects()
+        {
+            var effectLayer = new GameObject("OverlayEffects");
+            effectLayer.transform.SetParent(transform, false);
+            var layerRect = effectLayer.AddComponent<RectTransform>();
+            layerRect.anchorMin = Vector2.zero;
+            layerRect.anchorMax = Vector2.one;
+            layerRect.offsetMin = Vector2.zero;
+            layerRect.offsetMax = Vector2.zero;
+
+            var cg = effectLayer.AddComponent<CanvasGroup>();
+            cg.blocksRaycasts = false;
+            cg.interactable = false;
+
+            var liveEffect = effectLayer.AddComponent<MainMenuLiveEffect>();
+            liveEffect.Initialize(layerRect);
+        }
+
+        /// <summary>构建顶部信息栏 — 高品质胶囊底图+清晰大字号</summary>
         private void BuildTopBar()
         {
             var topBar = CreateRect("TopBar", transform);
-            topBar.anchorMin = new Vector2(0, 0.92f);
+            topBar.anchorMin = new Vector2(0, 0.90f);
             topBar.anchorMax = new Vector2(1, 1f);
             topBar.offsetMin = Vector2.zero;
             topBar.offsetMax = Vector2.zero;
 
-            UIStyleKit.CreateGradientPanel(topBar,
-                new Color(0.06f, 0.06f, 0.14f, 0.95f),
-                new Color(0.04f, 0.04f, 0.10f, 0.98f));
+            // 半透明底
+            var topBg = topBar.gameObject.AddComponent<Image>();
+            topBg.sprite = UIAtlasGenerator.GetTabBar();
+            topBg.type = Image.Type.Sliced;
+            topBg.raycastTarget = false;
 
-            // 玩家等级
-            _txtPlayerLevel = CreateText("LvText", topBar, "Lv.1", 18,
-                UIStyleKit.TextGold, TextAnchor.MiddleLeft);
-            SetAnchors(_txtPlayerLevel.rectTransform, 0.02f, 0.2f, 0.55f, 0.95f);
+            // 等级徽章
+            var lvBadge = CreateRect("LvBadge", topBar);
+            lvBadge.anchorMin = new Vector2(0.01f, 0.12f);
+            lvBadge.anchorMax = new Vector2(0.09f, 0.88f);
+            lvBadge.offsetMin = Vector2.zero;
+            lvBadge.offsetMax = Vector2.zero;
+            var lvImg = lvBadge.gameObject.AddComponent<Image>();
+            lvImg.sprite = UIAtlasGenerator.GetCapsule(new Color(0.65f, 0.50f, 0.10f, 0.95f));
+            lvImg.type = Image.Type.Sliced;
+            lvImg.raycastTarget = false;
 
-            // 玩家昵称
-            _txtPlayerName = CreateText("NameText", topBar, "指挥官", 16,
+            _txtPlayerLevel = CreateText("LvText", lvBadge.GetComponent<RectTransform>(), "Lv.1", 18,
+                Color.white, TextAnchor.MiddleCenter);
+            _txtPlayerLevel.fontStyle = FontStyle.Bold;
+            _txtPlayerLevel.font = Battle.BattleUI.GetFont();
+
+            // 昵称
+            _txtPlayerName = CreateText("Name", topBar, "指挥官", 18,
                 UIStyleKit.TextWhite, TextAnchor.MiddleLeft);
-            SetAnchors(_txtPlayerName.rectTransform, 0.02f, 0.2f, 0.1f, 0.55f);
+            _txtPlayerName.font = Battle.BattleUI.GetFont();
+            SetAnchors(_txtPlayerName.rectTransform, 0.10f, 0.35f, 0.1f, 0.9f);
 
-            // 钻石显示
-_txtDiamonds = CreateText("DiamondsText", topBar, "◇ 0", 16,
+            // 钻石胶囊
+            BuildCurrencyCapsule(topBar, "Diamond",
+                0.42f, 0.12f, 0.60f, 0.88f,
+                new Color(0.08f, 0.12f, 0.30f, 0.90f),
+                "nav_gacha", ref _txtDiamonds, new Color(0.5f, 0.85f, 1f));
 
-                new Color(0.4f, 0.7f, 1f), TextAnchor.MiddleRight);
-            SetAnchors(_txtDiamonds.rectTransform, 0.55f, 0.75f, 0.2f, 0.8f);
+            // 金币胶囊
+            BuildCurrencyCapsule(topBar, "Gold",
+                0.62f, 0.12f, 0.80f, 0.88f,
+                new Color(0.22f, 0.16f, 0.04f, 0.90f),
+                "icon_coin", ref _txtGold, new Color(1f, 0.90f, 0.35f));
 
-            // 金币显示
-_txtGold = CreateText("GoldText", topBar, "G 0", 16,
-
-                new Color(1f, 0.85f, 0.3f), TextAnchor.MiddleRight);
-            SetAnchors(_txtGold.rectTransform, 0.75f, 0.92f, 0.2f, 0.8f);
-
-            // 体力显示
-_txtStamina = CreateText("StaminaText", topBar, "!60", 14,
-
-                UIStyleKit.TextGreen, TextAnchor.MiddleRight);
-            SetAnchors(_txtStamina.rectTransform, 0.92f, 1f, 0.2f, 0.8f);
+            // 体力胶囊
+            BuildCurrencyCapsule(topBar, "Stamina",
+                0.82f, 0.12f, 0.99f, 0.88f,
+                new Color(0.08f, 0.20f, 0.08f, 0.90f),
+                "icon_heart", ref _txtStamina, new Color(0.45f, 1f, 0.55f));
         }
 
-        /// <summary>构建英雄展示区</summary>
+        private void BuildCurrencyCapsule(RectTransform parent, string name,
+            float xMin, float yMin, float xMax, float yMax,
+            Color bgColor, string iconName, ref Text txtRef, Color textColor)
+        {
+            var capsule = CreateRect($"Capsule_{name}", parent);
+            capsule.anchorMin = new Vector2(xMin, yMin);
+            capsule.anchorMax = new Vector2(xMax, yMax);
+            capsule.offsetMin = Vector2.zero;
+            capsule.offsetMax = Vector2.zero;
+
+            var capsuleImg = capsule.gameObject.AddComponent<Image>();
+            capsuleImg.sprite = UIAtlasGenerator.GetCapsule(bgColor);
+            capsuleImg.type = Image.Type.Sliced;
+            capsuleImg.raycastTarget = false;
+
+            // 图标
+            Sprite icon = SpriteLoader.LoadUI(iconName);
+            if (icon != null)
+            {
+                var iconObj = new GameObject("Icon");
+                iconObj.transform.SetParent(capsule, false);
+                var iconRect = iconObj.AddComponent<RectTransform>();
+                iconRect.anchorMin = new Vector2(0.03f, 0.10f);
+                iconRect.anchorMax = new Vector2(0.25f, 0.90f);
+                iconRect.offsetMin = Vector2.zero;
+                iconRect.offsetMax = Vector2.zero;
+                var iconImg = iconObj.AddComponent<Image>();
+                iconImg.sprite = icon;
+                iconImg.preserveAspect = true;
+                iconImg.raycastTarget = false;
+            }
+
+            // 数值
+            txtRef = CreateText($"Txt_{name}", capsule.GetComponent<RectTransform>(), "0", 17,
+                textColor, TextAnchor.MiddleRight);
+            txtRef.font = Battle.BattleUI.GetFont();
+            txtRef.fontStyle = FontStyle.Bold;
+            SetAnchors(txtRef.rectTransform, 0.26f, 0.95f, 0.05f, 0.95f);
+        }
+
+        /// <summary>构建英雄展示区 — 立绘直接展示+底部光晕底座+名称装饰</summary>
         private void BuildHeroDisplay()
         {
             _heroDisplayArea = CreateRect("HeroDisplay", transform);
-            _heroDisplayArea.anchorMin = new Vector2(0.1f, 0.45f);
-            _heroDisplayArea.anchorMax = new Vector2(0.9f, 0.88f);
+            _heroDisplayArea.anchorMin = new Vector2(0.15f, 0.28f);
+            _heroDisplayArea.anchorMax = new Vector2(0.85f, 0.90f);
             _heroDisplayArea.offsetMin = Vector2.zero;
             _heroDisplayArea.offsetMax = Vector2.zero;
 
-            // 英雄头像占位
+            // 底部椭圆光晕底座（在立绘下方）
+            var glowObj = new GameObject("HeroGlow");
+            glowObj.transform.SetParent(_heroDisplayArea, false);
+            var glowRect = glowObj.AddComponent<RectTransform>();
+            glowRect.anchorMin = new Vector2(0.15f, 0.02f);
+            glowRect.anchorMax = new Vector2(0.85f, 0.15f);
+            glowRect.offsetMin = Vector2.zero;
+            glowRect.offsetMax = Vector2.zero;
+            var glowImg = glowObj.AddComponent<Image>();
+            // 椭圆光晕纹理
+            var glowTex = new Texture2D(64, 16, TextureFormat.RGBA32, false);
+            for (int y = 0; y < 16; y++)
+                for (int x = 0; x < 64; x++)
+                {
+                    float nx = (x - 32f) / 32f;
+                    float ny = (y - 8f) / 8f;
+                    float d = nx * nx + ny * ny;
+                    float a = Mathf.Clamp01(1f - d) * 0.5f;
+                    glowTex.SetPixel(x, y, new Color(0.9f, 0.75f, 0.3f, a));
+                }
+            glowTex.Apply();
+            glowTex.filterMode = FilterMode.Bilinear;
+            glowImg.sprite = Sprite.Create(glowTex, new Rect(0, 0, 64, 16), new Vector2(0.5f, 0.5f));
+            glowImg.raycastTarget = false;
+
+            // 英雄立绘（无框直接展示）
             var avatarObj = new GameObject("HeroAvatar");
             avatarObj.transform.SetParent(_heroDisplayArea, false);
             var avatarRect = avatarObj.AddComponent<RectTransform>();
-            avatarRect.anchorMin = new Vector2(0.25f, 0.15f);
-            avatarRect.anchorMax = new Vector2(0.75f, 0.85f);
+            avatarRect.anchorMin = new Vector2(0.2f, 0.08f);
+            avatarRect.anchorMax = new Vector2(0.8f, 0.92f);
             avatarRect.offsetMin = Vector2.zero;
             avatarRect.offsetMax = Vector2.zero;
             _imgHeroAvatar = avatarObj.AddComponent<Image>();
-            _imgHeroAvatar.color = new Color(0.2f, 0.25f, 0.4f, 0.5f);
+            _imgHeroAvatar.color = new Color(1, 1, 1, 0); // 初始透明，有图时显示
+            _imgHeroAvatar.preserveAspect = true;
+            _imgHeroAvatar.raycastTarget = false;
 
-            // 英雄名称
-            _txtHeroName = CreateText("HeroName", _heroDisplayArea, "铁壁骑士", 22,
+            // 英雄名称装饰标签（底部居中，带半透明背景条）
+            var nameBg = CreateRect("HeroNameBg", _heroDisplayArea);
+            nameBg.anchorMin = new Vector2(0.2f, 0.0f);
+            nameBg.anchorMax = new Vector2(0.8f, 0.10f);
+            nameBg.offsetMin = Vector2.zero;
+            nameBg.offsetMax = Vector2.zero;
+            var nameBgTex = UIStyleKit.GetRoundedRectTexture(64, 16, 6,
+                new Color(0f, 0f, 0f, 0.6f), new Color(0.8f, 0.6f, 0.2f, 0.4f), 1);
+            var nameBgImg = nameBg.gameObject.AddComponent<Image>();
+            nameBgImg.sprite = Sprite.Create(nameBgTex, new Rect(0, 0, 64, 16),
+                new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect, new Vector4(8, 8, 8, 8));
+            nameBgImg.type = Image.Type.Sliced;
+            nameBgImg.raycastTarget = false;
+
+            _txtHeroName = CreateText("HeroName", nameBg.GetComponent<RectTransform>(), "铁壁骑士", 18,
                 UIStyleKit.TextGold, TextAnchor.MiddleCenter);
-            SetAnchors(_txtHeroName.rectTransform, 0.1f, 0.9f, 0.0f, 0.12f);
+            _txtHeroName.font = Battle.BattleUI.GetFont();
+            _txtHeroName.fontStyle = FontStyle.Bold;
             UIStyleKit.AddTextShadow(_txtHeroName);
         }
 
-        /// <summary>构建功能入口按钮</summary>
+        /// <summary>构建功能入口按钮 — CTA大按钮+右侧竖排圆形副按钮</summary>
         private void BuildFunctionButtons()
         {
-            var btnArea = CreateRect("ButtonArea", transform);
-            btnArea.anchorMin = new Vector2(0.02f, 0.15f);
-            btnArea.anchorMax = new Vector2(0.98f, 0.44f);
-            btnArea.offsetMin = Vector2.zero;
-            btnArea.offsetMax = Vector2.zero;
+            // ===== 大CTA按钮：开始战斗（底部居中，全宽）=====
+            var ctaArea = CreateRect("CTAArea", transform);
+            ctaArea.anchorMin = new Vector2(0.15f, 0.14f);
+            ctaArea.anchorMax = new Vector2(0.85f, 0.24f);
+            ctaArea.offsetMin = Vector2.zero;
+            ctaArea.offsetMax = Vector2.zero;
 
-            // 大按钮：开始战斗
-            _btnBattle = CreateFunctionButton(btnArea, "BtnBattle", "⚔️ 开始战斗",
-                new Vector2(0.2f, 0.55f), new Vector2(0.8f, 0.95f),
-                UIStyleKit.BtnGreenNormal, UIStyleKit.BtnGreenHover, UIStyleKit.BtnGreenPressed, 22);
+            _btnBattle = CreateCTAButton(ctaArea);
             _btnBattle.onClick.AddListener(OnBattleClick);
 
-            // 第二排按钮
-            float y0 = 0.05f, y1 = 0.48f;
-            float btnW = 0.185f;
-            float gap = 0.02f;
+            // ===== 右侧竖排圆形副按钮 =====
+            var sideArea = CreateRect("SideButtons", transform);
+            sideArea.anchorMin = new Vector2(0.88f, 0.28f);
+            sideArea.anchorMax = new Vector2(0.98f, 0.88f);
+            sideArea.offsetMin = Vector2.zero;
+            sideArea.offsetMax = Vector2.zero;
 
-            _btnHero = CreateFunctionButton(btnArea, "BtnHero", "🦸 英雄",
-                new Vector2(0f, y0), new Vector2(btnW, y1),
-                UIStyleKit.BtnBlueNormal, UIStyleKit.BtnBlueHover, UIStyleKit.BtnBluePressed, 15);
-            _btnHero.onClick.AddListener(OnHeroClick);
+            string[] sideNames = { "英雄", "商城", "召唤", "战令", "社交" };
+            string[] sideIcons = { "nav_hero", "nav_shop", "nav_gacha", "nav_battlepass", "nav_social" };
+            Button[] sideBtns = new Button[5];
+            float btnH = 1f / 5f;
 
-            _btnShop = CreateFunctionButton(btnArea, "BtnShop", "🛒 商城",
-                new Vector2(btnW + gap, y0), new Vector2(btnW * 2 + gap, y1),
-                UIStyleKit.BtnBlueNormal, UIStyleKit.BtnBlueHover, UIStyleKit.BtnBluePressed, 15);
-            _btnShop.onClick.AddListener(OnShopClick);
+            for (int i = 0; i < 5; i++)
+            {
+                sideBtns[i] = CreateCircleButton(sideArea, $"Side_{sideNames[i]}", sideNames[i], sideIcons[i],
+                    new Vector2(0f, 1f - (i + 1) * btnH + 0.01f),
+                    new Vector2(1f, 1f - i * btnH - 0.01f));
+            }
 
-            _btnGacha = CreateFunctionButton(btnArea, "BtnGacha", "🎰 召唤",
-                new Vector2((btnW + gap) * 2, y0), new Vector2(btnW * 3 + gap * 2, y1),
-                UIStyleKit.BtnBlueNormal, UIStyleKit.BtnBlueHover, UIStyleKit.BtnBluePressed, 15);
-            _btnGacha.onClick.AddListener(OnGachaClick);
-
-            _btnBattlePass = CreateFunctionButton(btnArea, "BtnBattlePass", "🎫 战令",
-                new Vector2((btnW + gap) * 3, y0), new Vector2(btnW * 4 + gap * 3, y1),
-                UIStyleKit.BtnBlueNormal, UIStyleKit.BtnBlueHover, UIStyleKit.BtnBluePressed, 15);
-            _btnBattlePass.onClick.AddListener(OnBattlePassClick);
-
-            _btnSocial = CreateFunctionButton(btnArea, "BtnSocial", "👥 社交",
-                new Vector2((btnW + gap) * 4, y0), new Vector2(1f, y1),
-                UIStyleKit.BtnBlueNormal, UIStyleKit.BtnBlueHover, UIStyleKit.BtnBluePressed, 15);
-            _btnSocial.onClick.AddListener(OnSocialClick);
+            _btnHero = sideBtns[0]; _btnHero.onClick.AddListener(OnHeroClick);
+            _btnShop = sideBtns[1]; _btnShop.onClick.AddListener(OnShopClick);
+            _btnGacha = sideBtns[2]; _btnGacha.onClick.AddListener(OnGachaClick);
+            _btnBattlePass = sideBtns[3]; _btnBattlePass.onClick.AddListener(OnBattlePassClick);
+            _btnSocial = sideBtns[4]; _btnSocial.onClick.AddListener(OnSocialClick);
 
             // 收集动画目标
             _animTargets.Add(_btnBattle.GetComponent<RectTransform>());
-            _animTargets.Add(_btnHero.GetComponent<RectTransform>());
-            _animTargets.Add(_btnShop.GetComponent<RectTransform>());
-            _animTargets.Add(_btnGacha.GetComponent<RectTransform>());
-            _animTargets.Add(_btnBattlePass.GetComponent<RectTransform>());
-            _animTargets.Add(_btnSocial.GetComponent<RectTransform>());
+            for (int i = 0; i < sideBtns.Length; i++)
+                _animTargets.Add(sideBtns[i].GetComponent<RectTransform>());
         }
 
-        /// <summary>构建底部导航栏</summary>
+        /// <summary>创建CTA大按钮（开始战斗）— 高品质渐变+金边+投影</summary>
+        private Button CreateCTAButton(RectTransform parent)
+        {
+            var obj = new GameObject("BtnBattle");
+            obj.transform.SetParent(parent, false);
+            var rect = obj.AddComponent<RectTransform>();
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+
+            var img = obj.AddComponent<Image>();
+            img.sprite = UIAtlasGenerator.GetCTAButton();
+            img.type = Image.Type.Sliced;
+
+            var btn = obj.AddComponent<Button>();
+            btn.targetGraphic = img;
+            var colors = btn.colors;
+            colors.normalColor = Color.white;
+            colors.highlightedColor = new Color(1.08f, 1.12f, 1.08f);
+            colors.pressedColor = new Color(0.85f, 0.90f, 0.85f);
+            colors.fadeDuration = 0.1f;
+            btn.colors = colors;
+
+            // 图标
+            Sprite battleIcon = SpriteLoader.LoadUI("nav_battle");
+            if (battleIcon != null)
+            {
+                var iconObj = new GameObject("Icon");
+                iconObj.transform.SetParent(obj.transform, false);
+                var iconRect = iconObj.AddComponent<RectTransform>();
+                iconRect.anchorMin = new Vector2(0.28f, 0.12f);
+                iconRect.anchorMax = new Vector2(0.42f, 0.88f);
+                iconRect.offsetMin = Vector2.zero;
+                iconRect.offsetMax = Vector2.zero;
+                var iconImg = iconObj.AddComponent<Image>();
+                iconImg.sprite = battleIcon;
+                iconImg.preserveAspect = true;
+                iconImg.raycastTarget = false;
+            }
+
+            // 文字
+            var txtObj = new GameObject("Label");
+            txtObj.transform.SetParent(obj.transform, false);
+            var txtRect = txtObj.AddComponent<RectTransform>();
+            txtRect.anchorMin = new Vector2(0.42f, 0.05f);
+            txtRect.anchorMax = new Vector2(0.78f, 0.95f);
+            txtRect.offsetMin = Vector2.zero;
+            txtRect.offsetMax = Vector2.zero;
+            var txt = txtObj.AddComponent<Text>();
+            txt.text = "开始战斗";
+            txt.fontSize = 28;
+            txt.color = Color.white;
+            txt.alignment = TextAnchor.MiddleCenter;
+            txt.font = Battle.BattleUI.GetFont();
+            txt.fontStyle = FontStyle.Bold;
+            txt.raycastTarget = false;
+            UIStyleKit.AddTextShadow(txt);
+
+            return btn;
+        }
+
+        /// <summary>创建右侧圆形按钮 — 高品质圆形底图+投影</summary>
+        private Button CreateCircleButton(RectTransform parent, string name, string label, string iconName,
+            Vector2 anchorMin, Vector2 anchorMax)
+        {
+            var obj = new GameObject(name);
+            obj.transform.SetParent(parent, false);
+            var rect = obj.AddComponent<RectTransform>();
+            rect.anchorMin = anchorMin;
+            rect.anchorMax = anchorMax;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+
+            var img = obj.AddComponent<Image>();
+            img.sprite = UIAtlasGenerator.GetCircleButton(new Color(0.06f, 0.06f, 0.18f, 0.88f));
+            img.preserveAspect = true;
+
+            var btn = obj.AddComponent<Button>();
+            btn.targetGraphic = img;
+            var colors = btn.colors;
+            colors.normalColor = Color.white;
+            colors.highlightedColor = new Color(1.15f, 1.15f, 1.25f);
+            colors.pressedColor = new Color(0.75f, 0.75f, 0.85f);
+            colors.fadeDuration = 0.1f;
+            btn.colors = colors;
+
+            // 图标
+            Sprite iconSprite = SpriteLoader.LoadUI(iconName);
+            if (iconSprite != null)
+            {
+                var iconObj = new GameObject("Icon");
+                iconObj.transform.SetParent(obj.transform, false);
+                var iconRect = iconObj.AddComponent<RectTransform>();
+                iconRect.anchorMin = new Vector2(0.18f, 0.30f);
+                iconRect.anchorMax = new Vector2(0.82f, 0.88f);
+                iconRect.offsetMin = Vector2.zero;
+                iconRect.offsetMax = Vector2.zero;
+                var iconImg = iconObj.AddComponent<Image>();
+                iconImg.sprite = iconSprite;
+                iconImg.preserveAspect = true;
+                iconImg.raycastTarget = false;
+            }
+
+            // 文字标签
+            var txtObj = new GameObject("Label");
+            txtObj.transform.SetParent(obj.transform, false);
+            var txtRect = txtObj.AddComponent<RectTransform>();
+            txtRect.anchorMin = new Vector2(-0.15f, -0.02f);
+            txtRect.anchorMax = new Vector2(1.15f, 0.26f);
+            txtRect.offsetMin = Vector2.zero;
+            txtRect.offsetMax = Vector2.zero;
+            var txt = txtObj.AddComponent<Text>();
+            txt.text = label;
+            txt.fontSize = 13;
+            txt.color = new Color(0.85f, 0.88f, 1f);
+            txt.alignment = TextAnchor.MiddleCenter;
+            txt.font = Battle.BattleUI.GetFont();
+            txt.raycastTarget = false;
+            UIStyleKit.AddTextShadow(txt);
+
+            return btn;
+        }
+
+        /// <summary>构建底部导航栏 — iOS标签栏风格</summary>
         private void BuildBottomNavBar()
         {
             _bottomNavBar = CreateRect("BottomNavBar", transform);
             _bottomNavBar.anchorMin = new Vector2(0, 0);
-            _bottomNavBar.anchorMax = new Vector2(1, 0.14f);
+            _bottomNavBar.anchorMax = new Vector2(1, 0.13f);
             _bottomNavBar.offsetMin = Vector2.zero;
             _bottomNavBar.offsetMax = Vector2.zero;
 
-            UIStyleKit.CreateGradientPanel(_bottomNavBar,
-                new Color(0.04f, 0.04f, 0.10f, 0.98f),
-                new Color(0.06f, 0.06f, 0.14f, 0.95f));
+            // 高品质标签栏底（含顶部金线）
+            var barBg = _bottomNavBar.gameObject.AddComponent<Image>();
+            barBg.sprite = UIAtlasGenerator.GetTabBar();
+            barBg.type = Image.Type.Sliced;
+            barBg.raycastTarget = true;
 
             // 导航按钮
-            string[] navLabels = { "📋 任务", "📬 邮件", "🏠 主页", "📊 排行", "⚙️ 设置" };
+            string[] navLabels = { "任务", "邮件", "主页", "排行", "设置" };
+            string[] navIconNames = { "nav_quest", "nav_mail", "nav_battle", "nav_rank", "nav_shop" };
             _navButtons = new Button[navLabels.Length];
             float navBtnW = 1f / navLabels.Length;
 
             for (int i = 0; i < navLabels.Length; i++)
             {
                 int idx = i;
-                var btn = CreateNavButton(_bottomNavBar, $"Nav_{i}", navLabels[i],
-                    new Vector2(navBtnW * i, 0.05f), new Vector2(navBtnW * (i + 1), 0.95f));
+                float xMin = navBtnW * i;
+                float xMax = navBtnW * (i + 1);
+
+                var btnObj = new GameObject($"Nav_{i}");
+                btnObj.transform.SetParent(_bottomNavBar, false);
+                var btnRect = btnObj.AddComponent<RectTransform>();
+                btnRect.anchorMin = new Vector2(xMin + 0.005f, 0.05f);
+                btnRect.anchorMax = new Vector2(xMax - 0.005f, 0.93f);
+                btnRect.offsetMin = Vector2.zero;
+                btnRect.offsetMax = Vector2.zero;
+
+                // 透明按钮（不需要可见背景，由选中态控制）
+                var btnImg = btnObj.AddComponent<Image>();
+                btnImg.color = Color.clear;
+
+                var btn = btnObj.AddComponent<Button>();
+                btn.targetGraphic = btnImg;
+                var colors = btn.colors;
+                colors.normalColor = Color.clear;
+                colors.highlightedColor = new Color(1, 1, 1, 0.05f);
+                colors.pressedColor = new Color(1, 1, 1, 0.1f);
+                colors.fadeDuration = 0.1f;
+                btn.colors = colors;
                 btn.onClick.AddListener(() => OnNavClick(idx));
                 _navButtons[i] = btn;
 
-                // 为任务和邮件添加红点占位
-                if (i == 0) AddRedDot(btn.GetComponent<RectTransform>(), "nav_quest");
-                if (i == 1) AddRedDot(btn.GetComponent<RectTransform>(), "nav_mail");
+                // 图标（上方 65%）
+                Sprite iconSprite = SpriteLoader.LoadUI(navIconNames[i]);
+                if (iconSprite != null)
+                {
+                    var iconObj = new GameObject("Icon");
+                    iconObj.transform.SetParent(btnObj.transform, false);
+                    var iconRect = iconObj.AddComponent<RectTransform>();
+                    iconRect.anchorMin = new Vector2(0.25f, 0.35f);
+                    iconRect.anchorMax = new Vector2(0.75f, 0.95f);
+                    iconRect.offsetMin = Vector2.zero;
+                    iconRect.offsetMax = Vector2.zero;
+                    var iconImg = iconObj.AddComponent<Image>();
+                    iconImg.sprite = iconSprite;
+                    iconImg.preserveAspect = true;
+                    iconImg.raycastTarget = false;
+                    // 未选中时半透明
+                    iconImg.color = (i == 2) ? Color.white : new Color(0.6f, 0.6f, 0.7f);
+                }
+
+                // 文字标签（下方 30%）
+                var txtObj = new GameObject("Label");
+                txtObj.transform.SetParent(btnObj.transform, false);
+                var txtRect = txtObj.AddComponent<RectTransform>();
+                txtRect.anchorMin = new Vector2(0, 0.0f);
+                txtRect.anchorMax = new Vector2(1, 0.33f);
+                txtRect.offsetMin = Vector2.zero;
+                txtRect.offsetMax = Vector2.zero;
+                var txt = txtObj.AddComponent<Text>();
+                txt.text = navLabels[i];
+                txt.fontSize = 11;
+                txt.color = (i == 2) ? UIStyleKit.TextGold : new Color(0.5f, 0.5f, 0.6f);
+                txt.alignment = TextAnchor.MiddleCenter;
+                txt.font = Battle.BattleUI.GetFont();
+                txt.raycastTarget = false;
+
+                // 红点
+                if (i == 0) AddRedDot(btnRect, "nav_quest");
+                if (i == 1) AddRedDot(btnRect, "nav_mail");
             }
 
-            // 默认选中主页
             UpdateNavSelection(2);
         }
 
@@ -359,12 +712,25 @@ _txtStamina = CreateText("StaminaText", topBar, "!60", 14,
             _currentNavIndex = index;
             for (int i = 0; i < _navButtons.Length; i++)
             {
-                var img = _navButtons[i].GetComponent<Image>();
-                if (img != null)
+                bool selected = (i == index);
+                var btnTransform = _navButtons[i].transform;
+
+                // 更新图标颜色
+                var iconTransform = btnTransform.Find("Icon");
+                if (iconTransform != null)
                 {
-                    img.color = (i == index)
-                        ? new Color(0.15f, 0.30f, 0.55f, 0.8f)
-                        : new Color(0.12f, 0.12f, 0.18f, 0.6f);
+                    var iconImg = iconTransform.GetComponent<Image>();
+                    if (iconImg != null)
+                        iconImg.color = selected ? Color.white : new Color(0.5f, 0.5f, 0.6f);
+                }
+
+                // 更新文字颜色
+                var labelTransform = btnTransform.Find("Label");
+                if (labelTransform != null)
+                {
+                    var txt = labelTransform.GetComponent<Text>();
+                    if (txt != null)
+                        txt.color = selected ? UIStyleKit.TextGold : new Color(0.5f, 0.5f, 0.6f);
                 }
             }
         }
@@ -378,9 +744,9 @@ _txtStamina = CreateText("StaminaText", topBar, "!60", 14,
 
             if (_txtPlayerLevel != null) _txtPlayerLevel.text = $"Lv.{data.Level}";
             if (_txtPlayerName != null) _txtPlayerName.text = data.Nickname;
-if (_txtDiamonds != null) _txtDiamonds.text = $"◇ {FormatNumber(data.Diamonds)}";
-            if (_txtGold != null) _txtGold.text = $"G {FormatNumber(data.Gold)}";
-            if (_txtStamina != null) _txtStamina.text = $"!{data.Stamina}/{data.MaxStamina}";
+if (_txtDiamonds != null) _txtDiamonds.text = FormatNumber(data.Diamonds);
+            if (_txtGold != null) _txtGold.text = FormatNumber(data.Gold);
+            if (_txtStamina != null) _txtStamina.text = $"{data.Stamina}/{data.MaxStamina}";
 
 
             // 刷新英雄展示
@@ -399,11 +765,26 @@ if (_txtDiamonds != null) _txtDiamonds.text = $"◇ {FormatNumber(data.Diamonds)
             }
             else
             {
-                // 从英雄配置获取名称
                 var heroConfig = HeroConfigTable.GetHero(heroId);
-                if (heroConfig != null && _txtHeroName != null)
+                if (heroConfig != null)
                 {
-                    _txtHeroName.text = heroConfig.Name;
+                    if (_txtHeroName != null) _txtHeroName.text = heroConfig.Name;
+
+                    // 加载英雄全身立绘（无框直接展示）
+                    if (_imgHeroAvatar != null && !string.IsNullOrEmpty(heroConfig.SpriteName))
+                    {
+                        Sprite heroSprite = SpriteLoader.LoadHeroFull(heroConfig.SpriteName);
+                        if (heroSprite != null)
+                        {
+                            _imgHeroAvatar.sprite = heroSprite;
+                            _imgHeroAvatar.preserveAspect = true;
+                            _imgHeroAvatar.color = Color.white;
+                        }
+                        else
+                        {
+                            _imgHeroAvatar.color = new Color(1, 1, 1, 0);
+                        }
+                    }
                 }
             }
         }
@@ -450,7 +831,7 @@ if (_txtDiamonds != null) _txtDiamonds.text = $"◇ {FormatNumber(data.Diamonds)
         private void OnStaminaChanged(StaminaChangedEvent evt)
         {
             if (_txtStamina != null)
-_txtStamina.text = $"!{evt.NewStamina}/{evt.MaxStamina}";
+_txtStamina.text = $"{evt.NewStamina}/{evt.MaxStamina}";
 
         }
 
@@ -531,18 +912,27 @@ _txtStamina.text = $"!{evt.NewStamina}/{evt.MaxStamina}";
             dotRect.offsetMax = Vector2.zero;
 
             var img = dotObj.AddComponent<Image>();
-            img.color = new Color(1f, 0.2f, 0.15f, 1f);
 
-            // 生成圆形纹理
-            var tex = new Texture2D(16, 16);
-            for (int y = 0; y < 16; y++)
-                for (int x = 0; x < 16; x++)
-                {
-                    float dist = Vector2.Distance(new Vector2(x, y), new Vector2(8, 8)) / 8f;
-                    tex.SetPixel(x, y, dist < 1f ? Color.white : Color.clear);
-                }
-            tex.Apply();
-            img.sprite = Sprite.Create(tex, new Rect(0, 0, 16, 16), new Vector2(0.5f, 0.5f));
+            // 优先加载真实红点图标
+            Sprite redDotSprite = SpriteLoader.LoadUI("deco_red_dot");
+            if (redDotSprite != null)
+            {
+                img.sprite = redDotSprite;
+                img.color = Color.white;
+            }
+            else
+            {
+                img.color = new Color(1f, 0.2f, 0.15f, 1f);
+                var tex = new Texture2D(16, 16);
+                for (int y = 0; y < 16; y++)
+                    for (int x = 0; x < 16; x++)
+                    {
+                        float dist = Vector2.Distance(new Vector2(x, y), new Vector2(8, 8)) / 8f;
+                        tex.SetPixel(x, y, dist < 1f ? Color.white : Color.clear);
+                    }
+                tex.Apply();
+                img.sprite = Sprite.Create(tex, new Rect(0, 0, 16, 16), new Vector2(0.5f, 0.5f));
+            }
 
             dotObj.SetActive(false);
             _redDots[nodeId] = dotObj;
@@ -595,84 +985,6 @@ _txtStamina.text = $"!{evt.NewStamina}/{evt.MaxStamina}";
             rect.anchorMax = new Vector2(xMax, yMax);
             rect.offsetMin = Vector2.zero;
             rect.offsetMax = Vector2.zero;
-        }
-
-        private Button CreateFunctionButton(RectTransform parent, string name, string label,
-            Vector2 anchorMin, Vector2 anchorMax, Color normal, Color hover, Color pressed, int fontSize = 16)
-        {
-            var obj = new GameObject(name);
-            obj.transform.SetParent(parent, false);
-            var rect = obj.AddComponent<RectTransform>();
-            rect.anchorMin = anchorMin;
-            rect.anchorMax = anchorMax;
-            rect.offsetMin = Vector2.zero;
-            rect.offsetMax = Vector2.zero;
-
-            var img = obj.AddComponent<Image>();
-            img.color = normal;
-
-            var btn = obj.AddComponent<Button>();
-            UIStyleKit.StyleButton(btn, normal, hover, pressed);
-
-            // 按钮文字
-            var txtObj = new GameObject("Label");
-            txtObj.transform.SetParent(obj.transform, false);
-            var txtRect = txtObj.AddComponent<RectTransform>();
-            txtRect.anchorMin = Vector2.zero;
-            txtRect.anchorMax = Vector2.one;
-            txtRect.offsetMin = new Vector2(4, 2);
-            txtRect.offsetMax = new Vector2(-4, -2);
-
-            var txt = txtObj.AddComponent<Text>();
-            txt.text = label;
-            txt.fontSize = fontSize;
-            txt.color = UIStyleKit.TextWhite;
-            txt.alignment = TextAnchor.MiddleCenter;
-            txt.font = Font.CreateDynamicFontFromOSFont("Arial", fontSize);
-            txt.raycastTarget = false;
-            UIStyleKit.AddTextShadow(txt);
-
-            return btn;
-        }
-
-        private Button CreateNavButton(RectTransform parent, string name, string label,
-            Vector2 anchorMin, Vector2 anchorMax)
-        {
-            var obj = new GameObject(name);
-            obj.transform.SetParent(parent, false);
-            var rect = obj.AddComponent<RectTransform>();
-            rect.anchorMin = anchorMin;
-            rect.anchorMax = anchorMax;
-            rect.offsetMin = Vector2.zero;
-            rect.offsetMax = Vector2.zero;
-
-            var img = obj.AddComponent<Image>();
-            img.color = new Color(0.12f, 0.12f, 0.18f, 0.6f);
-
-            var btn = obj.AddComponent<Button>();
-            var colors = btn.colors;
-            colors.normalColor = Color.white;
-            colors.highlightedColor = new Color(1, 1, 1, 0.9f);
-            colors.pressedColor = new Color(0.8f, 0.8f, 0.8f, 1f);
-            btn.colors = colors;
-
-            var txtObj = new GameObject("Label");
-            txtObj.transform.SetParent(obj.transform, false);
-            var txtRect = txtObj.AddComponent<RectTransform>();
-            txtRect.anchorMin = Vector2.zero;
-            txtRect.anchorMax = Vector2.one;
-            txtRect.offsetMin = Vector2.zero;
-            txtRect.offsetMax = Vector2.zero;
-
-            var txt = txtObj.AddComponent<Text>();
-            txt.text = label;
-            txt.fontSize = 13;
-            txt.color = UIStyleKit.TextWhite;
-            txt.alignment = TextAnchor.MiddleCenter;
-            txt.font = Font.CreateDynamicFontFromOSFont("Arial", 13);
-            txt.raycastTarget = false;
-
-            return btn;
         }
 
         private string FormatNumber(long num)

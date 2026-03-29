@@ -316,6 +316,9 @@ namespace AetheraSurvivors.Battle.Polish
             if (evt.IsBoss)
             {
                 PlaySFX(BattleSFX.BossWaveWarning, _sfxVolume);
+                // Boss波切换为Boss BGM
+                if (AudioManager.HasInstance)
+                    AudioManager.Instance.PlayBGM("Audio/BGM/bgm_boss", 0.8f);
             }
             else if (evt.IsElite)
             {
@@ -331,6 +334,9 @@ namespace AetheraSurvivors.Battle.Polish
         private void OnWaveComplete(WaveCompleteEvent evt)
         {
             PlaySFX(BattleSFX.WaveComplete, _sfxVolume * 0.7f);
+            // 如果当前正在播放Boss BGM，切回战斗BGM
+            if (AudioManager.HasInstance && AudioManager.Instance.IsBGMPlaying)
+                AudioManager.Instance.PlayBGM("Audio/BGM/bgm_battle", 0.8f);
         }
 
         /// <summary>全部波次完成</summary>
@@ -393,6 +399,12 @@ namespace AetheraSurvivors.Battle.Polish
         private void OnBattleResult(BattleResultEvent evt)
         {
             PlaySFX(evt.IsVictory ? BattleSFX.Victory : BattleSFX.Defeat, _sfxVolume);
+            // 播放胜利/失败BGM短曲（不循环）
+            if (AudioManager.HasInstance)
+            {
+                string bgm = evt.IsVictory ? "Audio/BGM/bgm_victory" : "Audio/BGM/bgm_defeat";
+                AudioManager.Instance.PlayBGM(bgm, 0.3f, false);
+            }
         }
 
         // ========== 公共方法：UI操作音效 ==========
@@ -413,52 +425,53 @@ namespace AetheraSurvivors.Battle.Polish
 
         private void InitSFXNames()
         {
-            // 音效名称映射（对应AudioManager中的clip名称）
-            // 开发阶段使用占位名称，后续替换为正式音效文件名
-            _sfxNames[BattleSFX.ArrowShoot] = "sfx_arrow_shoot";
-            _sfxNames[BattleSFX.MagicCast] = "sfx_magic_cast";
-            _sfxNames[BattleSFX.IceBlast] = "sfx_ice_blast";
-            _sfxNames[BattleSFX.CannonFire] = "sfx_cannon_fire";
-            _sfxNames[BattleSFX.PoisonSpit] = "sfx_poison_spit";
+            // 音效名称映射 → Resources/Audio/SFX/ 下的文件名（不含扩展名）
+            string p = "Audio/SFX/"; // Resources路径前缀
 
-            _sfxNames[BattleSFX.HitPhysical] = "sfx_hit_physical";
-            _sfxNames[BattleSFX.HitMagical] = "sfx_hit_magical";
-            _sfxNames[BattleSFX.HitIce] = "sfx_hit_ice";
-            _sfxNames[BattleSFX.HitExplosion] = "sfx_hit_explosion";
-            _sfxNames[BattleSFX.HitPoison] = "sfx_hit_poison";
-            _sfxNames[BattleSFX.HitCritical] = "sfx_hit_critical";
+            _sfxNames[BattleSFX.ArrowShoot] = p + "sfx_arrow_shoot";
+            _sfxNames[BattleSFX.MagicCast] = p + "sfx_magic_cast";
+            _sfxNames[BattleSFX.IceBlast] = p + "sfx_ice_blast";
+            _sfxNames[BattleSFX.CannonFire] = p + "sfx_cannon_fire";
+            _sfxNames[BattleSFX.PoisonSpit] = p + "sfx_poison_spit";
 
-            _sfxNames[BattleSFX.EnemyDeath] = "sfx_enemy_death";
-            _sfxNames[BattleSFX.EliteDeath] = "sfx_elite_death";
-            _sfxNames[BattleSFX.BossDeath] = "sfx_boss_death";
+            _sfxNames[BattleSFX.HitPhysical] = p + "sfx_hit_physical";
+            _sfxNames[BattleSFX.HitMagical] = p + "sfx_hit_magical";
+            _sfxNames[BattleSFX.HitIce] = p + "sfx_hit_ice";
+            _sfxNames[BattleSFX.HitExplosion] = p + "sfx_hit_explosion";
+            _sfxNames[BattleSFX.HitPoison] = p + "sfx_hit_poison";
+            _sfxNames[BattleSFX.HitCritical] = p + "sfx_hit_critical";
 
-            _sfxNames[BattleSFX.ComboHit] = "sfx_combo_hit";
-            _sfxNames[BattleSFX.ComboGradeUp] = "sfx_combo_grade_up";
-            _sfxNames[BattleSFX.ComboBreak] = "sfx_combo_break";
+            _sfxNames[BattleSFX.EnemyDeath] = p + "sfx_enemy_death";
+            _sfxNames[BattleSFX.EliteDeath] = p + "sfx_elite_death";
+            _sfxNames[BattleSFX.BossDeath] = p + "sfx_boss_death";
 
-            _sfxNames[BattleSFX.WaveStart] = "sfx_wave_start";
-            _sfxNames[BattleSFX.WaveComplete] = "sfx_wave_complete";
-            _sfxNames[BattleSFX.EliteWaveWarning] = "sfx_elite_warning";
-            _sfxNames[BattleSFX.BossWaveWarning] = "sfx_boss_warning";
-            _sfxNames[BattleSFX.AllWavesCleared] = "sfx_all_waves_cleared";
+            _sfxNames[BattleSFX.ComboHit] = p + "sfx_combo_hit";
+            _sfxNames[BattleSFX.ComboGradeUp] = p + "sfx_combo_grade_up";
+            _sfxNames[BattleSFX.ComboBreak] = p + "sfx_combo_break";
 
-            _sfxNames[BattleSFX.TowerPlace] = "sfx_tower_place";
-            _sfxNames[BattleSFX.TowerUpgrade] = "sfx_tower_upgrade";
-            _sfxNames[BattleSFX.TowerSell] = "sfx_tower_sell";
-            _sfxNames[BattleSFX.TowerSelect] = "sfx_tower_select";
-            _sfxNames[BattleSFX.TowerMaxLevel] = "sfx_tower_max_level";
-            _sfxNames[BattleSFX.GoldEarned] = "sfx_gold_earned";
-            _sfxNames[BattleSFX.RuneSelect] = "sfx_rune_select";
-            _sfxNames[BattleSFX.ButtonClick] = "sfx_button_click";
-            _sfxNames[BattleSFX.SpeedToggle] = "sfx_speed_toggle";
-            _sfxNames[BattleSFX.Pause] = "sfx_pause";
+            _sfxNames[BattleSFX.WaveStart] = p + "sfx_wave_start";
+            _sfxNames[BattleSFX.WaveComplete] = p + "sfx_wave_complete";
+            _sfxNames[BattleSFX.EliteWaveWarning] = p + "sfx_elite_warning";
+            _sfxNames[BattleSFX.BossWaveWarning] = p + "sfx_boss_warning";
+            _sfxNames[BattleSFX.AllWavesCleared] = p + "sfx_all_waves_cleared";
 
-            _sfxNames[BattleSFX.BaseDamaged] = "sfx_base_damaged";
-            _sfxNames[BattleSFX.BaseLowHP] = "sfx_base_low_hp";
-            _sfxNames[BattleSFX.BaseDestroyed] = "sfx_base_destroyed";
+            _sfxNames[BattleSFX.TowerPlace] = p + "sfx_tower_place";
+            _sfxNames[BattleSFX.TowerUpgrade] = p + "sfx_tower_upgrade";
+            _sfxNames[BattleSFX.TowerSell] = p + "sfx_tower_sell";
+            _sfxNames[BattleSFX.TowerSelect] = p + "sfx_tower_select";
+            _sfxNames[BattleSFX.TowerMaxLevel] = p + "sfx_tower_max_level";
+            _sfxNames[BattleSFX.GoldEarned] = p + "sfx_gold_earned";
+            _sfxNames[BattleSFX.RuneSelect] = p + "sfx_rune_select";
+            _sfxNames[BattleSFX.ButtonClick] = p + "sfx_button_click";
+            _sfxNames[BattleSFX.SpeedToggle] = p + "sfx_speed_toggle";
+            _sfxNames[BattleSFX.Pause] = p + "sfx_pause";
 
-            _sfxNames[BattleSFX.Victory] = "sfx_victory";
-            _sfxNames[BattleSFX.Defeat] = "sfx_defeat";
+            _sfxNames[BattleSFX.BaseDamaged] = p + "sfx_base_damaged";
+            _sfxNames[BattleSFX.BaseLowHP] = p + "sfx_base_low_hp";
+            _sfxNames[BattleSFX.BaseDestroyed] = p + "sfx_base_destroyed";
+
+            _sfxNames[BattleSFX.Victory] = p + "sfx_victory";
+            _sfxNames[BattleSFX.Defeat] = p + "sfx_defeat";
         }
     }
 }

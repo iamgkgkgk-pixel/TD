@@ -93,6 +93,41 @@ namespace AetheraSurvivors.Battle
             }
         }
 
+        /// <summary>基地回复生命（吸血词条等）</summary>
+        public void Heal(int amount)
+        {
+            if (IsDestroyed || amount <= 0) return;
+            int oldHP = _currentHP;
+            _currentHP = Mathf.Min(_currentHP + amount, _maxHP);
+
+            if (_currentHP != oldHP)
+            {
+                EventBus.Instance.Publish(new BaseHealthChangedEvent
+                {
+                    CurrentHP = _currentHP,
+                    MaxHP = _maxHP,
+                    Damage = -((_currentHP - oldHP))
+                });
+                Logger.D("BaseHealth", "基地回复: +{0} 当前{1}/{2}", _currentHP - oldHP, _currentHP, _maxHP);
+            }
+        }
+
+        /// <summary>增加最大血量并同时回复（BaseHPUp词条）</summary>
+        public void IncreaseMaxHP(int amount)
+        {
+            if (IsDestroyed || amount <= 0) return;
+            _maxHP += amount;
+            _currentHP += amount;
+
+            EventBus.Instance.Publish(new BaseHealthChangedEvent
+            {
+                CurrentHP = _currentHP,
+                MaxHP = _maxHP,
+                Damage = -amount
+            });
+            Logger.D("BaseHealth", "基地最大生命+{0} 当前{1}/{2}", amount, _currentHP, _maxHP);
+        }
+
         /// <summary>基地被摧毁</summary>
         private void OnBaseDestroyed()
         {

@@ -60,6 +60,7 @@ namespace AetheraSurvivors.MetaGame
             _purchaseCounts = new Dictionary<string, int>();
             InitProducts();
             LoadPurchaseState();
+            ClaimDailyCardRewards();
             Debug.Log("[ShopSystem] 初始化完成");
         }
 
@@ -302,6 +303,10 @@ Icon = "[礼]", Category = ShopCategory.Recommend, PriceType = PriceType.RMB,
                 case "first_pay_bundle":
                     PlayerDataManager.Instance.AddDiamonds(500);
                     HeroSystem.Instance.AddFragments("hero_chosen_one", 30);
+                    // 发放3张召唤券
+                    var fpData = PlayerDataManager.Instance.Data;
+                    fpData.SummonTickets = (fpData.SummonTickets) + 3;
+                    PlayerDataManager.Instance.MarkDirty();
                     _firstPayClaimed = true;
                     break;
                 case "month_card":
@@ -322,6 +327,43 @@ Icon = "[礼]", Category = ShopCategory.Recommend, PriceType = PriceType.RMB,
                     break;
             }
 
+            PlayerDataManager.Instance.Save();
+        }
+
+        /// <summary>每日登录时发放月卡/周卡奖励</summary>
+        public void ClaimDailyCardRewards()
+        {
+            if (!PlayerDataManager.HasInstance) return;
+
+            // 检查是否今天已领取过（用LastCardClaimDate判断）
+            var data = PlayerDataManager.Instance.Data;
+            string today = System.DateTime.UtcNow.ToString("yyyyMMdd");
+            if (data.LastCardClaimDate == today) return;
+
+            // 无论是否有卡，都标记今日已检查（防止购卡后重启重复领取）
+            data.LastCardClaimDate = today;
+
+            bool anyReward = false;
+
+            // 月卡每日奖励：100钻石 + 20体力
+            if (IsMonthCardActive)
+            {
+                PlayerDataManager.Instance.AddDiamonds(100);
+                data.Stamina = Mathf.Min(data.Stamina + 20, data.MaxStamina * 2);
+                anyReward = true;
+                Debug.Log("[ShopSystem] 月卡每日奖励发放: 100钻石 + 20体力");
+            }
+
+            // 周卡每日奖励：50钻石 + 10体力
+            if (IsWeekCardActive)
+            {
+                PlayerDataManager.Instance.AddDiamonds(50);
+                data.Stamina = Mathf.Min(data.Stamina + 10, data.MaxStamina * 2);
+                anyReward = true;
+                Debug.Log("[ShopSystem] 周卡每日奖励发放: 50钻石 + 10体力");
+            }
+
+            PlayerDataManager.Instance.MarkDirty();
             PlayerDataManager.Instance.Save();
         }
 

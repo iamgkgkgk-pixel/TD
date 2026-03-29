@@ -15,6 +15,7 @@ using Logger = AetheraSurvivors.Framework.Logger;
 
 using AetheraSurvivors.Battle.Map;
 using AetheraSurvivors.Battle.Tower;
+using AetheraSurvivors.Battle.Rune;
 
 namespace AetheraSurvivors.Battle.Enemy
 {
@@ -335,14 +336,17 @@ namespace AetheraSurvivors.Battle.Enemy
         {
             if (_isDead) return;
 
-            // 使用DamageCalculator计算最终伤害
+            // 使用DamageCalculator计算最终伤害（传入词条加成）
             float shield = _buffContainer?.ShieldAmount ?? 0f;
+            float runeCritRate = RuneSystem.HasInstance ? RuneSystem.Instance.CritRateBonus : 0f;
+            float runeCritDmg = RuneSystem.HasInstance ? RuneSystem.Instance.CritDamageBonus : 0f;
             var result = DamageCalculator.Calculate(
                 damageInfo,
                 GetEffectiveArmor(),
                 GetEffectiveMagicResist(),
                 _config?.dodgeRate ?? 0f,
-                critRate: 0f,
+                critRate: runeCritRate,
+                critMultiplier: 2.0f + runeCritDmg,
                 shieldAmount: shield
             );
 
@@ -369,6 +373,15 @@ namespace AetheraSurvivors.Battle.Enemy
             if (result.FinalDamage > 0f)
             {
                 _currentHP -= result.FinalDamage;
+            }
+
+            // 斩杀线检查（RuneSystem词条效果）
+            if (_currentHP > 0f && RuneSystem.HasInstance && RuneSystem.Instance.ExecuteThreshold > 0f)
+            {
+                if (HPPercent <= RuneSystem.Instance.ExecuteThreshold)
+                {
+                    _currentHP = 0f;
+                }
             }
 
             // 应用附带Buff
@@ -446,15 +459,38 @@ namespace AetheraSurvivors.Battle.Enemy
 
             if (killedByPlayer)
             {
+                // 计算金币掉落（含词条加成）
+                int goldDrop = _config?.goldDrop ?? 0;
+                if (RuneSystem.HasInstance && RuneSystem.Instance.GoldDropBonus > 0f)
+                {
+                    goldDrop = Mathf.RoundToInt(goldDrop * (1f + RuneSystem.Instance.GoldDropBonus));
+                }
+
                 // 发布死亡事件（掉落金币等）
                 EventBus.Instance.Publish(new EnemyDeathEvent
                 {
                     EnemyId = _instanceId,
                     EnemyType = Type,
                     Position = transform.position,
-                    GoldDrop = _config?.goldDrop ?? 0,
+                    GoldDrop = goldDrop,
                     IsBoss = _config?.isBoss ?? false
                 });
+
+                // 吸血词条：击杀恢复基地1点生命
+                if (RuneSystem.HasInstance && RuneSystem.Instance.HasLifeSteal)
+                {
+                    if (BaseHealth.HasInstance && !BaseHealth.Instance.IsDestroyed)
+                    {
+                        int currentHP = BaseHealth.Instance.CurrentHP;
+                        int maxHP = BaseHealth.Instance.MaxHP;
+                        if (currentHP < maxHP)
+                        {
+                            // 通过初始化重新设置不合适，直接在BaseHealth上加方法
+                            // 简单方式：发布恢复事件或直接调用
+                            BaseHealth.Instance.Heal(1);
+                        }
+                    }
+                }
             }
 
             // 清除Buff
@@ -467,13 +503,19 @@ namespace AetheraSurvivors.Battle.Enemy
         /// <summary>死亡效果（子类可重写）</summary>
         protected virtual void OnDeathEffect()
         {
+            // 从空间分区注销
+            if (Performance.SpatialPartition.HasInstance)
+            {
+                Performance.SpatialPartition.Instance.Unregister(this);
+            }
+
             // 有视觉动画组件时播放死亡动画，完成后再销毁
             if (_visualAnimator != null)
             {
                 _isInitialized = false; // 停止逻辑更新
                 _visualAnimator.PlayDeathAnimation(() =>
                 {
-                    // 死亡动画播放完毕，销毁
+                    gameObject.SetActive(false);
                     Destroy(gameObject);
                 });
             }
@@ -481,6 +523,7 @@ namespace AetheraSurvivors.Battle.Enemy
             {
                 // 无动画组件时直接销毁
                 _isInitialized = false;
+                gameObject.SetActive(false);
                 Destroy(gameObject);
             }
         }

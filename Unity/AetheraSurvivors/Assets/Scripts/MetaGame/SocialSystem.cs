@@ -41,6 +41,11 @@ namespace AetheraSurvivors.MetaGame
         private int _lastShareDate;
         private const int MaxDailyShares = 5; // 每日最多领取5次分享奖励
 
+        // ========== 好友体力防刷 ==========
+        private int _dailyFriendStaminaClaims;
+        private int _lastFriendStaminaDate;
+        private const int MaxDailyFriendStamina = 10; // 每日最多领取10次好友体力
+
         // ========== 排行榜缓存 ==========
         private List<RankEntry> _friendRankCache;
         private long _rankCacheTime;
@@ -153,16 +158,33 @@ namespace AetheraSurvivors.MetaGame
             return true;
         }
 
-        /// <summary>领取好友送的体力</summary>
+        /// <summary>领取好友送的体力（每日最多10次）</summary>
         public bool ClaimFriendStamina()
         {
+            // 防刷：检查每日次数
+            CheckFriendStaminaDateReset();
+            if (_dailyFriendStaminaClaims >= MaxDailyFriendStamina)
+            {
+                Debug.Log("[Social] 今日好友体力领取已达上限");
+                return false;
+            }
+
             if (StaminaSystem.HasInstance)
             {
                 StaminaSystem.Instance.AddStamina(5);
-                Debug.Log("[Social] 领取好友体力: +5");
+                _dailyFriendStaminaClaims++;
+                SaveShareState();
+                Debug.Log($"[Social] 领取好友体力: +5 ({_dailyFriendStaminaClaims}/{MaxDailyFriendStamina})");
                 return true;
             }
             return false;
+        }
+
+        /// <summary>获取今日剩余好友体力领取次数</summary>
+        public int GetRemainingFriendStamina()
+        {
+            CheckFriendStaminaDateReset();
+            return Mathf.Max(0, MaxDailyFriendStamina - _dailyFriendStaminaClaims);
         }
 
         // ========== 邀请奖励 ==========
@@ -195,6 +217,16 @@ namespace AetheraSurvivors.MetaGame
             {
                 _lastShareDate = today;
                 _dailyShareCount = 0;
+            }
+        }
+
+        private void CheckFriendStaminaDateReset()
+        {
+            int today = int.Parse(DateTime.Now.ToString("yyyyMMdd"));
+            if (_lastFriendStaminaDate != today)
+            {
+                _lastFriendStaminaDate = today;
+                _dailyFriendStaminaClaims = 0;
             }
         }
 
@@ -249,6 +281,8 @@ namespace AetheraSurvivors.MetaGame
                 {
                     _dailyShareCount = state.DailyShareCount;
                     _lastShareDate = state.LastShareDate;
+                    _dailyFriendStaminaClaims = state.DailyFriendStaminaClaims;
+                    _lastFriendStaminaDate = state.LastFriendStaminaDate;
                 }
             }
         }
@@ -260,7 +294,9 @@ namespace AetheraSurvivors.MetaGame
                 SaveManager.Instance.Save("share_state", new ShareSaveState
                 {
                     DailyShareCount = _dailyShareCount,
-                    LastShareDate = _lastShareDate
+                    LastShareDate = _lastShareDate,
+                    DailyFriendStaminaClaims = _dailyFriendStaminaClaims,
+                    LastFriendStaminaDate = _lastFriendStaminaDate
                 });
             }
         }
@@ -271,5 +307,7 @@ namespace AetheraSurvivors.MetaGame
     {
         public int DailyShareCount;
         public int LastShareDate;
+        public int DailyFriendStaminaClaims;
+        public int LastFriendStaminaDate;
     }
 }

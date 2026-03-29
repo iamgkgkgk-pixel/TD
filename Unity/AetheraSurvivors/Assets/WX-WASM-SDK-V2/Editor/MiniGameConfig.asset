@@ -19,8 +19,8 @@ MonoBehaviour:
     assetLoadType: 1
     compressDataPackage: 1
     VideoUrl: 
-    relativeDST: D:/AIRearch/TD/Unity/Wegame
-    DST: D:/AIRearch/TD/Unity/Wegame
+    relativeDST: /Users/gaokai/CodeBuddy/20260321224222/Unity
+    DST: /Users/gaokai/CodeBuddy/20260321224222/Unity
     StreamCDN: 
     bundleHashLength: 32
     bundlePathIdentifier: StreamingAssets;

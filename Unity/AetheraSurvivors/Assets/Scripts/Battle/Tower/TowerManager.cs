@@ -11,6 +11,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using AetheraSurvivors.Framework;
 using AetheraSurvivors.Battle.Map;
+using AetheraSurvivors.Battle.Rune;
 using Logger = AetheraSurvivors.Framework.Logger;
 
 // SpriteLoader 用于加载真实美术资源（有资源时自动替换占位图）
@@ -199,10 +200,15 @@ namespace AetheraSurvivors.Battle.Tower
                 return false;
             }
 
-            // 4. 金币检查
-            if (BattleEconomyManager.HasInstance && !BattleEconomyManager.Instance.CanAfford(config.buildCost))
+            // 4. 金币检查（含建造费用折扣词条）
+            int actualCost = config.buildCost;
+            if (RuneSystem.HasInstance && RuneSystem.Instance.BuildCostDiscount > 0f)
             {
-                Logger.D("TowerManager", "放塔失败：金币不足，需要{0}，当前{1}", config.buildCost, BattleEconomyManager.Instance.CurrentGold);
+                actualCost = Mathf.Max(1, Mathf.RoundToInt(config.buildCost * (1f - RuneSystem.Instance.BuildCostDiscount)));
+            }
+            if (BattleEconomyManager.HasInstance && !BattleEconomyManager.Instance.CanAfford(actualCost))
+            {
+                Logger.D("TowerManager", "放塔失败：金币不足，需要{0}（原价{1}），当前{2}", actualCost, config.buildCost, BattleEconomyManager.Instance.CurrentGold);
                 return false;
             }
 
@@ -247,10 +253,15 @@ namespace AetheraSurvivors.Battle.Tower
                 Pathfinding.Instance.OnMapChanged();
             }
 
-            // 10. 扣金币
+            // 10. 扣金币（使用折扣后价格）
             if (BattleEconomyManager.HasInstance)
             {
-                BattleEconomyManager.Instance.SpendGold(config.buildCost, $"建造{config.displayName}");
+                int finalCost = config.buildCost;
+                if (RuneSystem.HasInstance && RuneSystem.Instance.BuildCostDiscount > 0f)
+                {
+                    finalCost = Mathf.Max(1, Mathf.RoundToInt(config.buildCost * (1f - RuneSystem.Instance.BuildCostDiscount)));
+                }
+                BattleEconomyManager.Instance.SpendGold(finalCost, $"建造{config.displayName}");
             }
 
 

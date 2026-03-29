@@ -124,12 +124,14 @@ namespace AetheraSurvivors.MetaGame
                 var result = DoSinglePull();
 
                 // 十连保底：最后一抽如果没有SR以上，强制出SR
+                // 但如果DoSinglePull已触发SSR保底，绝不替换为SR
                 if (i == 9 && !hasSR)
                 {
                     if (result.Rarity == HeroRarity.R)
                     {
                         result = ForcePullRarity(HeroRarity.SR);
                     }
+                    // 如果result已是SSR（保底或自然），保持不动
                 }
 
                 if (result.Rarity >= HeroRarity.SR) hasSR = true;

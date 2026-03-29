@@ -64,6 +64,12 @@ namespace AetheraSurvivors.Data
         /// <summary>体力恢复时间（Unix时间戳）</summary>
         public long StaminaRecoverTime;
 
+        /// <summary>召唤券数量</summary>
+        public int SummonTickets;
+
+        /// <summary>上次月卡/周卡奖励领取日期（yyyyMMdd格式）</summary>
+        public string LastCardClaimDate;
+
         // ========== 关卡进度 ==========
 
         /// <summary>已解锁的最大章节</summary>
@@ -156,9 +162,11 @@ namespace AetheraSurvivors.Data
 
                 Diamonds = 0,
                 Gold = 500,       // 新手初始金币
-                Stamina = 60,     // 初始体力
-                MaxStamina = 60,
+                Stamina = 99999,  // 测试模式：无限体力
+                MaxStamina = 99999,
                 StaminaRecoverTime = 0,
+                SummonTickets = 0,
+                LastCardClaimDate = "",
 
                 UnlockedChapter = 1,
                 UnlockedLevel = 1,
@@ -328,6 +336,9 @@ namespace AetheraSurvivors.Data
 
         /// <summary>付费轨已领取的等级列表</summary>
         public List<int> ClaimedPremium;
+
+        /// <summary>赛季开始时间（Unix时间戳）</summary>
+        public long SeasonStartTimestamp;
     }
 
     // ====================================================================

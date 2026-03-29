@@ -26,6 +26,7 @@ namespace AetheraSurvivors.MetaGame
         // UI引用
         private RectTransform _heroListArea;
         private RectTransform _heroDetailArea;
+        private Image _imgHeroPortrait;
         private Text _txtHeroName;
         private Text _txtHeroRarity;
         private Text _txtHeroLevel;
@@ -124,10 +125,23 @@ namespace AetheraSurvivors.MetaGame
 
         private void BuildDetailArea()
         {
-            // 英雄名称
+            // 英雄半身像（详情区顶部）
+            var portraitObj = new GameObject("HeroPortrait");
+            portraitObj.transform.SetParent(_heroDetailArea, false);
+            var portraitRect = portraitObj.AddComponent<RectTransform>();
+            portraitRect.anchorMin = new Vector2(0.25f, 0.55f);
+            portraitRect.anchorMax = new Vector2(0.75f, 0.95f);
+            portraitRect.offsetMin = Vector2.zero;
+            portraitRect.offsetMax = Vector2.zero;
+            _imgHeroPortrait = portraitObj.AddComponent<Image>();
+            _imgHeroPortrait.color = new Color(1, 1, 1, 0); // 初始透明，有图时显示
+            _imgHeroPortrait.preserveAspect = true;
+            _imgHeroPortrait.raycastTarget = false;
+
+            // 英雄名称（移到中间偏下位置）
             _txtHeroName = CreateText("HeroName", _heroDetailArea, "选择英雄", 24,
                 UIStyleKit.TextGold, TextAnchor.MiddleCenter);
-            SetAnchors(_txtHeroName.rectTransform, 0.05f, 0.95f, 0.88f, 0.97f);
+            SetAnchors(_txtHeroName.rectTransform, 0.05f, 0.95f, 0.48f, 0.56f);
             UIStyleKit.AddTextShadow(_txtHeroName);
 
             // 稀有度
@@ -257,6 +271,21 @@ _btnStarUp = CreateButton(_heroDetailArea, "BtnStarUp", "★ 升星",
             if (config == null) return;
 
             _txtHeroName.text = $"{config.Icon} {config.Name}";
+
+            // 加载英雄半身像
+            if (_imgHeroPortrait != null && !string.IsNullOrEmpty(config.SpriteName))
+            {
+                Sprite portrait = SpriteLoader.LoadHeroHalf(config.SpriteName);
+                if (portrait != null)
+                {
+                    _imgHeroPortrait.sprite = portrait;
+                    _imgHeroPortrait.color = Color.white;
+                }
+                else
+                {
+                    _imgHeroPortrait.color = new Color(1, 1, 1, 0); // 无图则隐藏
+                }
+            }
 
             string rarityStr = config.Rarity == HeroRarity.SSR ? "SSR" :
                                config.Rarity == HeroRarity.SR ? "SR" : "R";

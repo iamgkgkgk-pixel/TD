@@ -170,11 +170,59 @@ namespace AetheraSurvivors.Framework
         /// <summary>存档版本号的存储Key</summary>
         private const string VersionKey = "__save_version__";
 
-        /// <summary>加密密钥（16字节 = AES-128）⚠️ 正式版本应从服务端获取</summary>
-        private static readonly byte[] EncryptKey = Encoding.UTF8.GetBytes("AetheraSurvivor!");  // 恰好16字节
+        /// <summary>加密密钥（运行时从设备ID派生，避免源码硬编码）</summary>
+        private static byte[] _runtimeKey;
+        private static byte[] _runtimeIV;
 
-        /// <summary>加密IV（16字节）</summary>
-        private static readonly byte[] EncryptIV = Encoding.UTF8.GetBytes("SurvivorsDefend!");   // 恰好16字节
+        private static byte[] GetEncryptKey()
+        {
+            if (_runtimeKey == null)
+            {
+                // WebGL平台deviceUniqueIdentifier每次会话不同，使用稳定标识符
+                string deviceId;
+#if UNITY_WEBGL && !UNITY_EDITOR
+                // WebGL使用固定应用标识符（PlayerPrefs中存储随机生成的设备ID）
+                deviceId = PlayerPrefs.GetString("__device_id__", "");
+                if (string.IsNullOrEmpty(deviceId))
+                {
+                    deviceId = System.Guid.NewGuid().ToString("N");
+                    PlayerPrefs.SetString("__device_id__", deviceId);
+                    PlayerPrefs.Save();
+                }
+#else
+                deviceId = SystemInfo.deviceUniqueIdentifier;
+#endif
+                string deviceSeed = deviceId + "AetheraSurvivor!";
+                using (var sha = System.Security.Cryptography.SHA256.Create())
+                {
+                    byte[] hash = sha.ComputeHash(Encoding.UTF8.GetBytes(deviceSeed));
+                    _runtimeKey = new byte[16];
+                    System.Array.Copy(hash, 0, _runtimeKey, 0, 16);
+                }
+            }
+            return _runtimeKey;
+        }
+
+        private static byte[] GetEncryptIV()
+        {
+            if (_runtimeIV == null)
+            {
+                string deviceId;
+#if UNITY_WEBGL && !UNITY_EDITOR
+                deviceId = PlayerPrefs.GetString("__device_id__", "AetheraSurvivorsDefault");
+#else
+                deviceId = SystemInfo.deviceUniqueIdentifier;
+#endif
+                string ivSeed = "SurvivorsDefend!" + deviceId;
+                using (var sha = System.Security.Cryptography.SHA256.Create())
+                {
+                    byte[] hash = sha.ComputeHash(Encoding.UTF8.GetBytes(ivSeed));
+                    _runtimeIV = new byte[16];
+                    System.Array.Copy(hash, 16, _runtimeIV, 0, 16);
+                }
+            }
+            return _runtimeIV;
+        }
 
         /// <summary>签名密钥</summary>
         private const string SignSecret = "AetheraSaveSign2026";
@@ -297,6 +345,7 @@ namespace AetheraSurvivors.Framework
                 {
                     // 旧版数据（无签名），直接尝试解密
                     string json = _encryptionEnabled ? Decrypt(fullData) : fullData;
+                    if (json == null) return defaultValue;
                     return JsonUtility.FromJson<T>(json);
                 }
 
@@ -313,6 +362,7 @@ namespace AetheraSurvivors.Framework
 
                 // 解密
                 string decrypted = _encryptionEnabled ? Decrypt(stored) : stored;
+                if (decrypted == null) return defaultValue;
 
                 // 反序列化
                 return JsonUtility.FromJson<T>(decrypted);
@@ -425,8 +475,8 @@ namespace AetheraSurvivors.Framework
             {
                 using (var aes = Aes.Create())
                 {
-                    aes.Key = EncryptKey;
-                    aes.IV = EncryptIV;
+                    aes.Key = GetEncryptKey();
+                    aes.IV = GetEncryptIV();
                     aes.Mode = CipherMode.CBC;
                     aes.Padding = PaddingMode.PKCS7;
 
@@ -440,7 +490,8 @@ namespace AetheraSurvivors.Framework
             catch (Exception e)
             {
                 Debug.LogError($"[SaveManager] 加密失败: {e.Message}");
-                return plainText; // 加密失败返回原文
+                // 加密失败不返回明文，标记为加密失败数据
+                return "ENC_FAIL:" + Convert.ToBase64String(Encoding.UTF8.GetBytes(plainText));
             }
         }
 
@@ -449,10 +500,17 @@ namespace AetheraSurvivors.Framework
         {
             try
             {
+                // 处理加密失败的标记数据
+                if (cipherText.StartsWith("ENC_FAIL:"))
+                {
+                    string base64 = cipherText.Substring(9);
+                    return Encoding.UTF8.GetString(Convert.FromBase64String(base64));
+                }
+
                 using (var aes = Aes.Create())
                 {
-                    aes.Key = EncryptKey;
-                    aes.IV = EncryptIV;
+                    aes.Key = GetEncryptKey();
+                    aes.IV = GetEncryptIV();
                     aes.Mode = CipherMode.CBC;
                     aes.Padding = PaddingMode.PKCS7;
 
@@ -465,8 +523,9 @@ namespace AetheraSurvivors.Framework
             }
             catch (Exception e)
             {
-                Debug.LogError($"[SaveManager] 解密失败: {e.Message}");
-                return cipherText; // 解密失败返回原文
+                Debug.LogError($"[SaveManager] 解密失败（数据可能已损坏）: {e.Message}");
+                // 解密失败返回null而不是密文，防止将密文当作有效JSON解析导致数据损坏
+                return null;
             }
         }
 

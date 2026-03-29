@@ -465,6 +465,20 @@ namespace AetheraSurvivors.MetaGame
 
             iconText.raycastTarget = false;
 
+            // 英雄头像图片（叠加在iconText上方，有图时隐藏文字）
+            var iconImgObj = new GameObject("IconImage");
+            iconImgObj.transform.SetParent(frontObj.transform, false);
+            var iconImgRect = iconImgObj.AddComponent<RectTransform>();
+            iconImgRect.anchorMin = new Vector2(0.15f, 0.30f);
+            iconImgRect.anchorMax = new Vector2(0.85f, 0.88f);
+            iconImgRect.offsetMin = Vector2.zero;
+            iconImgRect.offsetMax = Vector2.zero;
+            var iconImage = iconImgObj.AddComponent<Image>();
+            iconImage.preserveAspect = true;
+            iconImage.raycastTarget = false;
+            iconImage.color = new Color(1, 1, 1, 0); // 初始透明
+            iconImgObj.SetActive(false);
+
             // 英雄名称
             var nameObj = new GameObject("Name");
             nameObj.transform.SetParent(frontObj.transform, false);
@@ -509,6 +523,7 @@ namespace AetheraSurvivors.MetaGame
                 FrontRoot = frontObj,
                 FrontBg = frontBg,
                 IconText = iconText,
+                IconImage = iconImage,
                 NameText = nameText,
                 GlowImage = glowImg,
                 IsRevealed = false
@@ -559,7 +574,21 @@ namespace AetheraSurvivors.MetaGame
             // 设置内容
             if (config != null)
             {
-                card.IconText.text = config.Icon;
+                // 优先加载英雄头像图片
+                Sprite avatarSprite = !string.IsNullOrEmpty(config.SpriteName)
+                    ? AetheraSurvivors.Framework.SpriteLoader.LoadHeroAvatar(config.SpriteName) : null;
+                if (avatarSprite != null && card.IconImage != null)
+                {
+                    card.IconImage.sprite = avatarSprite;
+                    card.IconImage.color = Color.white;
+                    card.IconImage.gameObject.SetActive(true);
+                    card.IconText.gameObject.SetActive(false);
+                }
+                else
+                {
+                    card.IconText.text = config.Icon;
+                }
+
                 string label = config.Name;
                 if (result.IsNew) label += "\nNEW";
                 else label += $"\n#{result.FragmentCount}";
@@ -693,7 +722,21 @@ namespace AetheraSurvivors.MetaGame
 
                 if (config != null)
                 {
-                    card.IconText.text = config.Icon;
+                    // 优先加载头像
+                    Sprite avatarSprite = !string.IsNullOrEmpty(config.SpriteName)
+                        ? AetheraSurvivors.Framework.SpriteLoader.LoadHeroAvatar(config.SpriteName) : null;
+                    if (avatarSprite != null && card.IconImage != null)
+                    {
+                        card.IconImage.sprite = avatarSprite;
+                        card.IconImage.color = Color.white;
+                        card.IconImage.gameObject.SetActive(true);
+                        card.IconText.gameObject.SetActive(false);
+                    }
+                    else
+                    {
+                        card.IconText.text = config.Icon;
+                    }
+
                     string label = config.Name;
                     if (result.IsNew) label += "\nNEW";
                     else label += $"\n#{result.FragmentCount}";
@@ -780,6 +823,7 @@ namespace AetheraSurvivors.MetaGame
         public GameObject FrontRoot;
         public Image FrontBg;
         public Text IconText;
+        public Image IconImage; // 英雄头像图片（有图时替代IconText）
         public Text NameText;
         public Image GlowImage;
         public bool IsRevealed;

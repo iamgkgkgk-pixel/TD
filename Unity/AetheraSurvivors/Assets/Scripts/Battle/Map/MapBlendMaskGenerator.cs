@@ -1,12 +1,15 @@
 // ============================================================
 // 文件名：MapBlendMaskGenerator.cs
 // 功能描述：地图混合遮罩生成器 — 根据GridSystem数据生成BlendMask
-//   遍历地图格子，路径格子写白色(1)，草地格子写黑色(0)
-//   然后对mask做高斯模糊，产生自然的0→1渐变过渡带
-//   生成的Texture2D传给MapBlendShader作为_BlendMask
+//   遍历地图格子，按类型写入RGBA通道：
+//     R = 路径/出生点/基地
+//     G = 障碍物（岩石）
+//     B = 塔位（花朵）
+//     草地 = 默认底层（1 - R - G - B）
+//   然后对每个通道做高斯模糊，产生自然的过渡带
 // 创建时间：2026-03-25
 // 所属模块：Battle/Map
-// 对应交互：方案C — Shader Blend
+// 对应交互：方案C — Shader Blend（扩展为4纹理）
 // ============================================================
 
 using UnityEngine;
@@ -16,46 +19,32 @@ using Logger = AetheraSurvivors.Framework.Logger;
 namespace AetheraSurvivors.Battle.Map
 {
     /// <summary>
-    /// 地图混合遮罩生成器
+    /// 地图混合遮罩生成器（RGBA四通道）
     /// 
     /// 职责：
-    /// 1. 从GridSystem读取地图数据，生成原始mask（路径=白，草地=黑）
-    /// 2. 对mask执行高斯模糊，产生平滑过渡带
+    /// 1. 从GridSystem读取地图数据，生成原始mask
+    ///    R=路径, G=岩石, B=花朵, 草地=默认
+    /// 2. 对mask每个通道执行高斯模糊，产生平滑过渡带
     /// 3. 输出Texture2D供MapBlendShader使用
-    /// 
-    /// 生成流程：
-    ///   GridSystem数据 → 原始Mask(0/1) → 高斯模糊 → 最终BlendMask
     /// </summary>
     public static class MapBlendMaskGenerator
     {
         // ========== 配置常量 ==========
 
-        /// <summary>
-        /// Mask分辨率倍率（每个格子对应多少像素）
-        /// 倍率越高过渡越精细，但内存占用越大
-        /// 8 = 每格8×8像素，10×10地图 → 80×80 mask → 过渡更平滑
-        /// </summary>
+        /// <summary>每格子对应像素数</summary>
         private const int PIXELS_PER_CELL = 8;
 
-        /// <summary>
-        /// 高斯模糊半径（像素）
-        /// 控制过渡带的宽度，越大越柔和
-        /// </summary>
+        /// <summary>高斯模糊半径</summary>
         private const int BLUR_RADIUS = 5;
 
-        /// <summary>
-        /// 高斯模糊迭代次数
-        /// 多次模糊效果更平滑
-        /// </summary>
+        /// <summary>高斯模糊迭代次数</summary>
         private const int BLUR_ITERATIONS = 3;
-
 
         // ========== 核心方法 ==========
 
         /// <summary>
-        /// 生成混合遮罩纹理
+        /// 生成混合遮罩纹理（RGBA四通道）
         /// </summary>
-        /// <returns>BlendMask纹理（R通道：0=草地，1=路径），失败返回null</returns>
         public static Texture2D GenerateBlendMask()
         {
             var grid = GridSystem.Instance;
@@ -70,32 +59,34 @@ namespace AetheraSurvivors.Battle.Map
             int texWidth = mapWidth * PIXELS_PER_CELL;
             int texHeight = mapHeight * PIXELS_PER_CELL;
 
-            Logger.I("MapBlendMask", "开始生成BlendMask: 地图{0}×{1} → 纹理{2}×{3}",
+            Logger.I("MapBlendMask", "开始生成BlendMask(RGBA): 地图{0}×{1} → 纹理{2}×{3}",
                 mapWidth, mapHeight, texWidth, texHeight);
 
-            // ===== 步骤1：生成原始Mask（路径=1，草地=0）=====
-            float[] rawMask = GenerateRawMask(grid, texWidth, texHeight);
+            // 步骤1：生成原始Mask（三个通道各自独立）
+            float[] rawR, rawG, rawB;
+            GenerateRawMask(grid, texWidth, texHeight, out rawR, out rawG, out rawB);
 
-            // ===== 步骤2：高斯模糊 =====
-            float[] blurredMask = rawMask;
+            // 步骤2：对每个通道分别做高斯模糊
+            float[] blurR = rawR;
+            float[] blurG = rawG;
+            float[] blurB = rawB;
             for (int i = 0; i < BLUR_ITERATIONS; i++)
             {
-                blurredMask = GaussianBlur(blurredMask, texWidth, texHeight, BLUR_RADIUS);
+                blurR = GaussianBlur(blurR, texWidth, texHeight, BLUR_RADIUS);
+                blurG = GaussianBlur(blurG, texWidth, texHeight, BLUR_RADIUS);
+                blurB = GaussianBlur(blurB, texWidth, texHeight, BLUR_RADIUS);
             }
 
-            // ===== 步骤3：生成Texture2D =====
-            Texture2D maskTex = CreateMaskTexture(blurredMask, texWidth, texHeight);
+            // 步骤3：合成为RGBA Texture2D
+            Texture2D maskTex = CreateMaskTexture(blurR, blurG, blurB, texWidth, texHeight);
 
-            Logger.I("MapBlendMask", "✅ BlendMask生成完成: {0}×{1}", texWidth, texHeight);
+            Logger.I("MapBlendMask", "✅ BlendMask(RGBA)生成完成: {0}×{1}", texWidth, texHeight);
             return maskTex;
         }
 
         /// <summary>
-        /// 生成指定模糊半径的混合遮罩（可自定义参数版本）
+        /// 可自定义参数版本
         /// </summary>
-        /// <param name="pixelsPerCell">每格子像素数</param>
-        /// <param name="blurRadius">模糊半径</param>
-        /// <param name="blurIterations">模糊迭代次数</param>
         public static Texture2D GenerateBlendMask(int pixelsPerCell, int blurRadius, int blurIterations)
         {
             var grid = GridSystem.Instance;
@@ -104,25 +95,38 @@ namespace AetheraSurvivors.Battle.Map
             int texWidth = grid.Width * pixelsPerCell;
             int texHeight = grid.Height * pixelsPerCell;
 
-            float[] rawMask = GenerateRawMask(grid, texWidth, texHeight);
+            float[] rawR, rawG, rawB;
+            GenerateRawMask(grid, texWidth, texHeight, out rawR, out rawG, out rawB);
 
-            float[] blurredMask = rawMask;
+            float[] blurR = rawR;
+            float[] blurG = rawG;
+            float[] blurB = rawB;
             for (int i = 0; i < blurIterations; i++)
             {
-                blurredMask = GaussianBlur(blurredMask, texWidth, texHeight, blurRadius);
+                blurR = GaussianBlur(blurR, texWidth, texHeight, blurRadius);
+                blurG = GaussianBlur(blurG, texWidth, texHeight, blurRadius);
+                blurB = GaussianBlur(blurB, texWidth, texHeight, blurRadius);
             }
 
-            return CreateMaskTexture(blurredMask, texWidth, texHeight);
+            return CreateMaskTexture(blurR, blurG, blurB, texWidth, texHeight);
         }
 
         // ========== 内部方法 ==========
 
         /// <summary>
-        /// 生成原始Mask数据（路径相关=1，其他=0）
+        /// 生成三通道原始Mask数据
+        /// R = 路径/出生点/基地
+        /// G = 障碍物（岩石）
+        /// B = 塔位（花朵）
         /// </summary>
-        private static float[] GenerateRawMask(GridSystem grid, int texWidth, int texHeight)
+        private static void GenerateRawMask(GridSystem grid, int texWidth, int texHeight,
+            out float[] maskR, out float[] maskG, out float[] maskB)
         {
-            float[] mask = new float[texWidth * texHeight];
+            int total = texWidth * texHeight;
+            maskR = new float[total];
+            maskG = new float[total];
+            maskB = new float[total];
+
             int mapWidth = grid.Width;
             int mapHeight = grid.Height;
 
@@ -130,45 +134,38 @@ namespace AetheraSurvivors.Battle.Map
             {
                 for (int px = 0; px < texWidth; px++)
                 {
-                    // 像素坐标 → 网格坐标
-                    int cellX = px * mapWidth / texWidth;
-                    int cellY = py * mapHeight / texHeight;
-
-                    // 确保不越界
-                    cellX = Mathf.Clamp(cellX, 0, mapWidth - 1);
-                    cellY = Mathf.Clamp(cellY, 0, mapHeight - 1);
+                    int cellX = Mathf.Clamp(px * mapWidth / texWidth, 0, mapWidth - 1);
+                    int cellY = Mathf.Clamp(py * mapHeight / texHeight, 0, mapHeight - 1);
 
                     var cell = grid.GetCell(cellX, cellY);
+                    int idx = py * texWidth + px;
 
-                    // 路径、出生点、基地 → 白色(1)，表示使用路径纹理
-                    // 其他类型 → 黑色(0)，表示使用草地纹理
-                    float value = 0f;
                     switch (cell.Type)
                     {
                         case GridCellType.Path:
                         case GridCellType.SpawnPoint:
                         case GridCellType.BasePoint:
-                            value = 1f;
+                            maskR[idx] = 1f;
+                            break;
+                        case GridCellType.Obstacle:
+                            maskG[idx] = 1f;
+                            break;
+                        case GridCellType.TowerSlot:
+                            maskB[idx] = 1f;
                             break;
                         default:
-                            value = 0f;
+                            // Empty = 草地（全0，底层默认）
                             break;
                     }
-
-                    mask[py * texWidth + px] = value;
                 }
             }
-
-            return mask;
         }
 
         /// <summary>
-        /// 高斯模糊（CPU端，分离式两遍模糊）
-        /// 先水平模糊，再垂直模糊，性能 O(n*r) 而非 O(n*r²)
+        /// 高斯模糊（CPU端，分离式两遍）
         /// </summary>
         private static float[] GaussianBlur(float[] input, int width, int height, int radius)
         {
-            // 生成高斯核
             float[] kernel = GenerateGaussianKernel(radius);
             int kernelSize = kernel.Length;
             int halfKernel = kernelSize / 2;
@@ -236,7 +233,6 @@ namespace AetheraSurvivors.Battle.Map
                 sum += kernel[i];
             }
 
-            // 归一化
             for (int i = 0; i < size; i++)
             {
                 kernel[i] /= sum;
@@ -246,24 +242,28 @@ namespace AetheraSurvivors.Battle.Map
         }
 
         /// <summary>
-        /// 将float数组转换为Texture2D
+        /// 将三个float通道合成为RGBA Texture2D
         /// </summary>
-        private static Texture2D CreateMaskTexture(float[] data, int width, int height)
+        private static Texture2D CreateMaskTexture(float[] dataR, float[] dataG, float[] dataB,
+            int width, int height)
         {
-            // 使用R8格式节省内存（只需要R通道）
             Texture2D tex = new Texture2D(width, height, TextureFormat.RGBA32, false);
-            tex.filterMode = FilterMode.Bilinear; // 双线性过滤让过渡更平滑
-            tex.wrapMode = TextureWrapMode.Clamp;  // 边缘不重复
+            tex.filterMode = FilterMode.Bilinear;
+            tex.wrapMode = TextureWrapMode.Clamp;
 
             Color[] pixels = new Color[width * height];
-            for (int i = 0; i < data.Length; i++)
+            for (int i = 0; i < pixels.Length; i++)
             {
-                float v = Mathf.Clamp01(data[i]);
-                pixels[i] = new Color(v, v, v, 1f);
+                pixels[i] = new Color(
+                    Mathf.Clamp01(dataR[i]),
+                    Mathf.Clamp01(dataG[i]),
+                    Mathf.Clamp01(dataB[i]),
+                    1f
+                );
             }
 
             tex.SetPixels(pixels);
-            tex.Apply(false, false); // 不生成mipmap，不设为只读（方便调试）
+            tex.Apply(false, false);
 
             return tex;
         }

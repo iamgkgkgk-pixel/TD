@@ -11,6 +11,7 @@ using System;
 using UnityEngine;
 using AetheraSurvivors.Framework;
 using AetheraSurvivors.Battle.Tower;
+using AetheraSurvivors.Battle.Performance;
 using Logger = AetheraSurvivors.Framework.Logger;
 
 namespace AetheraSurvivors.Battle.Projectile
@@ -226,21 +227,99 @@ namespace AetheraSurvivors.Battle.Projectile
             if (HitEffectSystem.HasInstance)
             {
                 HitEffectSystem.Instance.PlayHitEffect(_targetLastPos, _sourceTowerType, _damageInfo.IsCritical);
-
             }
 
-            // 对目标造伤
-            if (_target != null && _target.gameObject.activeInHierarchy)
+            // AOE爆炸处理（炮塔/法塔）
+            bool isAOETower = _sourceTowerType == TowerType.Cannon || _sourceTowerType == TowerType.Mage;
+            if (isAOETower)
             {
-                var enemy = _target.GetComponent<Enemy.EnemyBase>();
-                if (enemy != null && !enemy.IsDead)
+                float aoeRadius = _sourceTowerType == TowerType.Cannon ? 1.2f : 1.5f;
+                float splashRatio = _sourceTowerType == TowerType.Cannon ? 0.7f : 1.0f;
+                ApplyAOEDamage(_targetLastPos, aoeRadius, splashRatio);
+            }
+            else
+            {
+                // 单体伤害
+                if (_target != null && _target.gameObject.activeInHierarchy)
                 {
-                    enemy.TakeDamage(_damageInfo);
+                    var enemy = _target.GetComponent<Enemy.EnemyBase>();
+                    if (enemy != null && !enemy.IsDead)
+                    {
+                        enemy.TakeDamage(_damageInfo);
+                    }
                 }
             }
 
-            // 回收到对象池
+            // 回收
             ReturnToPool();
+        }
+
+        /// <summary>AOE爆炸伤害</summary>
+        private void ApplyAOEDamage(Vector3 center, float radius, float splashRatio)
+        {
+            // 优先用空间分区查询
+            if (SpatialPartition.HasInstance)
+            {
+                var enemies = SpatialPartition.Instance.QueryRadius(center, radius);
+                for (int i = 0; i < enemies.Count; i++)
+                {
+                    if (enemies[i] == null || enemies[i].IsDead) continue;
+                    bool isPrimary = (_target != null && enemies[i].transform == _target);
+
+                    // 主目标受全额伤害，溅射目标受splashRatio倍伤害
+                    var dmg = _damageInfo;
+                    if (!isPrimary)
+                    {
+                        dmg = new DamageInfo
+                        {
+                            Damage = _damageInfo.Damage * splashRatio,
+                            DamageType = _damageInfo.DamageType,
+                            SourceTowerId = _damageInfo.SourceTowerId,
+                            SourcePosition = _damageInfo.SourcePosition,
+                            IsAOEHit = true,
+                            BuffId = _damageInfo.BuffId,
+                            BuffDuration = _damageInfo.BuffDuration,
+                            BuffValue = _damageInfo.BuffValue
+                        };
+                    }
+                    enemies[i].TakeDamage(dmg);
+
+                    // 炮塔击退效果
+                    if (_sourceTowerType == TowerType.Cannon)
+                    {
+                        enemies[i].ApplyKnockback(0.5f);
+                    }
+                }
+            }
+            else
+            {
+                // 回退：Physics2D
+                var colliders = Physics2D.OverlapCircleAll(center, radius);
+                for (int i = 0; i < colliders.Length; i++)
+                {
+                    if (colliders[i] == null || !colliders[i].CompareTag("Enemy")) continue;
+                    var enemy = colliders[i].GetComponent<Enemy.EnemyBase>();
+                    if (enemy == null || enemy.IsDead) continue;
+
+                    bool isPrimary = (_target != null && colliders[i].transform == _target);
+                    var dmg = _damageInfo;
+                    if (!isPrimary)
+                    {
+                        dmg = new DamageInfo
+                        {
+                            Damage = _damageInfo.Damage * splashRatio,
+                            DamageType = _damageInfo.DamageType,
+                            SourceTowerId = _damageInfo.SourceTowerId,
+                            SourcePosition = _damageInfo.SourcePosition,
+                            IsAOEHit = true,
+                            BuffId = _damageInfo.BuffId,
+                            BuffDuration = _damageInfo.BuffDuration,
+                            BuffValue = _damageInfo.BuffValue
+                        };
+                    }
+                    enemy.TakeDamage(dmg);
+                }
+            }
         }
 
 

@@ -71,6 +71,7 @@ namespace AetheraSurvivors.Battle
         private Button[] _runeButtons = new Button[3];
         private Text[] _runeNameTexts = new Text[3];
         private Text[] _runeDescTexts = new Text[3];
+        private Image[] _runeIconImages = new Image[3];
         private Text _runeTitleText;
 
         // ========== 结算面板 ==========
@@ -135,6 +136,15 @@ namespace AetheraSurvivors.Battle
         private static readonly string[] TowerIcons = {
             "[弓]", "[法]", "[冰]", "[炮]", "[毒]", "[$]"
         };
+
+        /// <summary>塔按钮图标UI名（对应SpriteLoader.LoadUI）</summary>
+        private static readonly string[] TowerBtnIconNames = {
+            "btn_tower_archer", "btn_tower_mage", "btn_tower_ice",
+            "btn_tower_cannon", "btn_tower_poison", "btn_tower_goldmine"
+        };
+
+        // ========== 塔按钮图标Image引用 ==========
+        private Image[] _towerIconImages = new Image[6];
 
 
         // ========== 生命周期 ==========
@@ -418,28 +428,66 @@ namespace AetheraSurvivors.Battle
             // 底部分隔线
             UIStyleKit.CreateSeparator(topBar, 0f, UIStyleKit.BorderGold * 0.6f, 1.5f);
 
-            // 金币 — 金色文字+阴影
+            // 金币图标+文字
+            Sprite coinSprite = SpriteLoader.LoadUI("icon_coin");
+            if (coinSprite != null)
+            {
+                var coinIconObj = new GameObject("CoinIcon");
+                coinIconObj.transform.SetParent(topBar, false);
+                var coinIconRect = coinIconObj.AddComponent<RectTransform>();
+                SetAnchors(coinIconRect, new Vector2(0.02f, 0.2f), new Vector2(0.06f, 0.8f));
+                coinIconRect.anchoredPosition = Vector2.zero;
+                coinIconRect.sizeDelta = Vector2.zero;
+                var coinImg = coinIconObj.AddComponent<Image>();
+                coinImg.sprite = coinSprite;
+                coinImg.preserveAspect = true;
+                coinImg.raycastTarget = false;
+            }
             _goldText = CreateText("GoldText", topBar, "200", 32, TextAnchor.MiddleLeft, UIStyleKit.TextGold);
-
-            SetAnchors(_goldText.rectTransform, new Vector2(0.03f, 0), new Vector2(0.22f, 1));
+            SetAnchors(_goldText.rectTransform, new Vector2(0.07f, 0), new Vector2(0.22f, 1));
             _goldText.rectTransform.anchoredPosition = Vector2.zero;
             _goldText.rectTransform.sizeDelta = Vector2.zero;
             _goldText.fontStyle = FontStyle.Bold;
             UIStyleKit.AddTextShadow(_goldText);
 
-            // 波次 — 白色文字
+            // 波次图标+文字
+            Sprite flagSprite = SpriteLoader.LoadUI("icon_wave_flag");
+            if (flagSprite != null)
+            {
+                var flagIconObj = new GameObject("WaveIcon");
+                flagIconObj.transform.SetParent(topBar, false);
+                var flagIconRect = flagIconObj.AddComponent<RectTransform>();
+                SetAnchors(flagIconRect, new Vector2(0.25f, 0.2f), new Vector2(0.29f, 0.8f));
+                flagIconRect.anchoredPosition = Vector2.zero;
+                flagIconRect.sizeDelta = Vector2.zero;
+                var flagImg = flagIconObj.AddComponent<Image>();
+                flagImg.sprite = flagSprite;
+                flagImg.preserveAspect = true;
+                flagImg.raycastTarget = false;
+            }
             _waveText = CreateText("WaveText", topBar, "波次 0/5", 28, TextAnchor.MiddleCenter, UIStyleKit.TextWhite);
-
-            SetAnchors(_waveText.rectTransform, new Vector2(0.25f, 0), new Vector2(0.50f, 1));
+            SetAnchors(_waveText.rectTransform, new Vector2(0.30f, 0), new Vector2(0.50f, 1));
             _waveText.rectTransform.anchoredPosition = Vector2.zero;
             _waveText.rectTransform.sizeDelta = Vector2.zero;
             UIStyleKit.AddTextShadow(_waveText);
 
-            // 基地HP — 红色系
+            // 基地HP图标+文字
+            Sprite heartSprite = SpriteLoader.LoadUI("icon_heart");
+            if (heartSprite != null)
+            {
+                var heartIconObj = new GameObject("HeartIcon");
+                heartIconObj.transform.SetParent(topBar, false);
+                var heartIconRect = heartIconObj.AddComponent<RectTransform>();
+                SetAnchors(heartIconRect, new Vector2(0.50f, 0.2f), new Vector2(0.54f, 0.8f));
+                heartIconRect.anchoredPosition = Vector2.zero;
+                heartIconRect.sizeDelta = Vector2.zero;
+                var heartImg = heartIconObj.AddComponent<Image>();
+                heartImg.sprite = heartSprite;
+                heartImg.preserveAspect = true;
+                heartImg.raycastTarget = false;
+            }
 _hpText = CreateText("HPText", topBar, "HP 20/20", 28, TextAnchor.MiddleCenter, UIStyleKit.TextHP);
-
-
-            SetAnchors(_hpText.rectTransform, new Vector2(0.50f, 0), new Vector2(0.75f, 1));
+            SetAnchors(_hpText.rectTransform, new Vector2(0.55f, 0), new Vector2(0.75f, 1));
             _hpText.rectTransform.anchoredPosition = Vector2.zero;
             _hpText.rectTransform.sizeDelta = Vector2.zero;
             UIStyleKit.AddTextShadow(_hpText);
@@ -504,12 +552,28 @@ _hpText = CreateText("HPText", topBar, "HP 20/20", 28, TextAnchor.MiddleCenter, 
                 // [G3-5] 添加拖拽检测（EventTrigger）
                 AddDragDetection(btnRect.gameObject, index);
 
-                // 塔图标 — 更大更醒目
-                var iconText = CreateText($"Icon_{i}", btnRect, TowerIcons[i], 36, TextAnchor.MiddleCenter, Color.white);
-
-                SetAnchors(iconText.rectTransform, new Vector2(0, 0.48f), new Vector2(1, 0.95f));
-                iconText.rectTransform.anchoredPosition = Vector2.zero;
-                iconText.rectTransform.sizeDelta = Vector2.zero;
+                // 塔图标 — 优先加载真实图标，无图回退文字
+                Sprite towerIconSprite = SpriteLoader.LoadUI(TowerBtnIconNames[i]);
+                if (towerIconSprite != null)
+                {
+                    var iconObj = new GameObject($"IconImg_{i}");
+                    iconObj.transform.SetParent(btnRect, false);
+                    var iconRect = iconObj.AddComponent<RectTransform>();
+                    SetAnchors(iconRect, new Vector2(0.1f, 0.40f), new Vector2(0.9f, 0.95f));
+                    iconRect.anchoredPosition = Vector2.zero;
+                    iconRect.sizeDelta = Vector2.zero;
+                    _towerIconImages[i] = iconObj.AddComponent<Image>();
+                    _towerIconImages[i].sprite = towerIconSprite;
+                    _towerIconImages[i].preserveAspect = true;
+                    _towerIconImages[i].raycastTarget = false;
+                }
+                else
+                {
+                    var iconText = CreateText($"Icon_{i}", btnRect, TowerIcons[i], 36, TextAnchor.MiddleCenter, Color.white);
+                    SetAnchors(iconText.rectTransform, new Vector2(0, 0.48f), new Vector2(1, 0.95f));
+                    iconText.rectTransform.anchoredPosition = Vector2.zero;
+                    iconText.rectTransform.sizeDelta = Vector2.zero;
+                }
 
                 // 名称 — 白色+阴影
                 var nameText = CreateText($"Name_{i}", btnRect, TowerNames[i], 20, TextAnchor.UpperCenter, UIStyleKit.TextWhite);
@@ -742,10 +806,23 @@ _runeTitleText = CreateText("RuneTitle", contentPanel, "◆ 选择词条", 36, T
                 colors.fadeDuration = 0.1f;
                 _runeButtons[i].colors = colors;
 
-                // 词条名 — 白色加粗+阴影
+                // 词条图标区域（左侧）
+                var iconObj = new GameObject($"RuneIcon_{i}");
+                iconObj.transform.SetParent(btnRect, false);
+                var iconRect = iconObj.AddComponent<RectTransform>();
+                SetAnchors(iconRect, new Vector2(0.02f, 0.1f), new Vector2(0.15f, 0.9f));
+                iconRect.anchoredPosition = Vector2.zero;
+                iconRect.sizeDelta = Vector2.zero;
+                _runeIconImages[i] = iconObj.AddComponent<Image>();
+                _runeIconImages[i].preserveAspect = true;
+                _runeIconImages[i].raycastTarget = false;
+                _runeIconImages[i].color = Color.white;
+                iconObj.SetActive(false); // 默认隐藏，OnRuneSelection时按需显示
+
+                // 词条名 — 白色加粗+阴影（右移为图标腾出空间）
                 _runeNameTexts[i] = CreateText($"RuneName_{i}", btnRect, "词条名称", 28, TextAnchor.MiddleLeft, Color.white);
 
-                SetAnchors(_runeNameTexts[i].rectTransform, new Vector2(0.05f, 0.5f), new Vector2(0.95f, 0.95f));
+                SetAnchors(_runeNameTexts[i].rectTransform, new Vector2(0.17f, 0.5f), new Vector2(0.95f, 0.95f));
                 _runeNameTexts[i].rectTransform.anchoredPosition = Vector2.zero;
                 _runeNameTexts[i].rectTransform.sizeDelta = Vector2.zero;
                 _runeNameTexts[i].fontStyle = FontStyle.Bold;
@@ -754,7 +831,7 @@ _runeTitleText = CreateText("RuneTitle", contentPanel, "◆ 选择词条", 36, T
                 // 词条描述 — 浅灰色
                 _runeDescTexts[i] = CreateText($"RuneDesc_{i}", btnRect, "效果描述", 22, TextAnchor.MiddleLeft, UIStyleKit.TextGray);
 
-                SetAnchors(_runeDescTexts[i].rectTransform, new Vector2(0.05f, 0.05f), new Vector2(0.95f, 0.5f));
+                SetAnchors(_runeDescTexts[i].rectTransform, new Vector2(0.17f, 0.05f), new Vector2(0.95f, 0.5f));
                 _runeDescTexts[i].rectTransform.anchoredPosition = Vector2.zero;
                 _runeDescTexts[i].rectTransform.sizeDelta = Vector2.zero;
             }
@@ -1159,10 +1236,22 @@ ShowNotice($"√ 第 {evt.WaveIndex} 波清除！", 2f);
         private void OnRuneSelection(RuneSelectionEvent evt)
         {
             _currentRuneOptions = evt.Options;
+
+            // 隐藏其他弹出面板，避免重叠
+            if (_towerInfoPanel.activeSelf)
+            {
+                _towerInfoPanel.SetActive(false);
+            }
+            HideQuickBuildPanel();
+            if (TowerManager.HasInstance) TowerManager.Instance.DeselectTower();
+
             _runePanel.SetActive(true);
 
-            // 词条面板弹出动效 — 整体淡入
+            // 词条面板弹出动效 — 重置PanelHide遗留的scale=0，再淡入
             var runePanelRect = _runePanel.GetComponent<RectTransform>();
+            runePanelRect.localScale = Vector3.one;
+            var runeCG = runePanelRect.GetComponent<CanvasGroup>();
+            if (runeCG != null) runeCG.alpha = 0f;
             UIAnimator.FadeIn(runePanelRect, 0.25f).SetUnscaled(true);
 
             // 收集有效的词条按钮用于依次入场动效
@@ -1179,6 +1268,19 @@ ShowNotice($"√ 第 {evt.WaveIndex} 波清除！", 2f);
                     Color rarityColor = GetRarityColor(rune.rarity);
                     _runeNameTexts[i].text = $"<color=#{ColorUtility.ToHtmlStringRGB(rarityColor)}>{rune.displayName}</color> [{GetRarityName(rune.rarity)}]";
                     _runeDescTexts[i].text = rune.description;
+
+                    // 加载词条图标（根据effectType映射图标名）
+                    string iconName = GetRuneIconName(rune.effectType);
+                    Sprite runeIcon = !string.IsNullOrEmpty(iconName) ? SpriteLoader.LoadRoguelikeIcon(iconName) : null;
+                    if (runeIcon != null && _runeIconImages[i] != null)
+                    {
+                        _runeIconImages[i].sprite = runeIcon;
+                        _runeIconImages[i].gameObject.SetActive(true);
+                    }
+                    else if (_runeIconImages[i] != null)
+                    {
+                        _runeIconImages[i].gameObject.SetActive(false);
+                    }
 
                     validBtnRects.Add(_runeButtons[i].GetComponent<RectTransform>());
                 }
@@ -1230,15 +1332,24 @@ _resultTitleText.text = "X 失败...";
 
         private void OnTowerSelected(TowerSelectedEvent evt)
         {
+            // 词条面板显示时不弹出塔信息
+            if (_runePanel.activeSelf || _resultPanel.activeSelf) return;
+
             bool wasHidden = !_towerInfoPanel.activeSelf;
             _towerInfoPanel.SetActive(true);
             var tower = evt.Tower;
             if (tower == null) return;
 
-            // 塔信息面板滑入动效（仅首次显示时）
+            // 每次都强制重置scale/alpha（防止PanelHide动画中途再次打开导致scale=0）
+            var infoRect = _towerInfoPanel.GetComponent<RectTransform>();
+            UIAnimator.Kill(infoRect); // 取消正在播放的关闭动画
+            infoRect.localScale = Vector3.one;
+            var cg = infoRect.GetComponent<CanvasGroup>();
+            if (cg != null) { cg.alpha = 1f; cg.blocksRaycasts = true; }
+
+            // 仅首次显示时播放滑入动效
             if (wasHidden)
             {
-                var infoRect = _towerInfoPanel.GetComponent<RectTransform>();
                 UIAnimator.SlideFromBottom(infoRect, 60f, 0.25f);
                 UIAnimator.FadeIn(infoRect, 0.2f);
             }
@@ -1944,6 +2055,38 @@ ShowNotice($"X 无法在此建造{TowerNames[index]}", 1.5f);
                 case RuneRarity.Epic: return "史诗";
                 case RuneRarity.Legendary: return "传说";
                 default: return "";
+            }
+        }
+
+        /// <summary>根据词条effectType映射到图标资源名（对应roguelike_*.png）</summary>
+        private string GetRuneIconName(RuneEffectType effectType)
+        {
+            switch (effectType)
+            {
+                case RuneEffectType.DamageUp:
+                case RuneEffectType.PhysicalDamageUp:
+                case RuneEffectType.MagicalDamageUp:
+                    return "atk_up";
+                case RuneEffectType.AttackSpeedUp:
+                    return "aspd_up";
+                case RuneEffectType.RangeUp:
+                    return "range_up";
+                case RuneEffectType.CritRateUp:
+                case RuneEffectType.CritDamageUp:
+                    return "crit_up";
+                case RuneEffectType.SlowEffectUp:
+                    return "freeze";
+                case RuneEffectType.GoldDropUp:
+                case RuneEffectType.BuildCostDown:
+                    return "gold_bonus";
+                case RuneEffectType.ExecuteThreshold:
+                case RuneEffectType.LifeSteal:
+                    return "poison_up";
+                case RuneEffectType.PierceUp:
+                case RuneEffectType.BaseHPUp:
+                    return "aoe_up";
+                default:
+                    return "atk_up";
             }
         }
     }

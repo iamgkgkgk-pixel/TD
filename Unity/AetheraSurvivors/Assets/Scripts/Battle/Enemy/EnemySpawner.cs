@@ -12,6 +12,7 @@ using AetheraSurvivors.Framework;
 using Logger = AetheraSurvivors.Framework.Logger;
 
 using AetheraSurvivors.Battle.Map;
+using AetheraSurvivors.Battle.Performance;
 
 namespace AetheraSurvivors.Battle.Enemy
 {
@@ -128,6 +129,12 @@ namespace AetheraSurvivors.Battle.Enemy
             enemy.Initialize(runtimeConfig, pathPoints);
             _activeEnemies.Add(enemy);
 
+            // 注册到空间分区系统
+            if (SpatialPartition.HasInstance)
+            {
+                SpatialPartition.Instance.Register(enemy);
+            }
+
             EventBus.Instance.Publish(new EnemySpawnedEvent
             {
                 EnemyId = enemy.InstanceId,
@@ -136,6 +143,20 @@ namespace AetheraSurvivors.Battle.Enemy
             });
 
             return enemy;
+        }
+
+        /// <summary>
+        /// 注册外部创建的怪物到管理列表（分裂怪等动态生成的子怪调用）
+        /// </summary>
+        public void RegisterExternalEnemy(EnemyBase enemy)
+        {
+            if (enemy == null) return;
+            _activeEnemies.Add(enemy);
+
+            if (SpatialPartition.HasInstance)
+            {
+                SpatialPartition.Instance.Register(enemy);
+            }
         }
 
         /// <summary>

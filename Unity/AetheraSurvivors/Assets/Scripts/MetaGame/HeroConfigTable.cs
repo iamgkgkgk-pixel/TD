@@ -25,6 +25,7 @@ namespace AetheraSurvivors.MetaGame
         public string Id;
         public string Name;
         public string Icon; // emoji图标
+        public string SpriteName; // 英雄图片资源名（对应hero_{SpriteName}_full/half/avatar.png）
         public HeroRarity Rarity;
         public HeroRole Role;
         public string ActiveSkillName;
@@ -170,7 +171,7 @@ Id = "hero_dwarf_miner", Name = "矮人矿工", Icon = "[$]",
 
             Register(new HeroConfig
             {
-Id = "hero_chosen_one", Name = "天选者", Icon = "★",
+Id = "hero_chosen_one", Name = "天选者", Icon = "★", SpriteName = "chosen",
 
                 Rarity = HeroRarity.SSR, Role = HeroRole.AllRound,
                 ActiveSkillName = "神之裁决", ActiveSkillDesc = "对全屏敌人造成当前血量20%伤害",
